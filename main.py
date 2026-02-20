@@ -25,22 +25,15 @@ bot = ModBot()
 async def on_ready():
     print(f"✅ Bot online como {bot.user}")
 
-# ------------------ COMANDOS PÚBLICOS ------------------
+# ------------------ COMANDO PÚBLICO ------------------
 
-@bot.tree.command(
-    name="ping",
-    description="Verifica se o bot está online"
-)
+@bot.tree.command(name="ping", description="Verifica se o bot está online")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("🏓 Pong!")
 
-# ------------------ COMANDOS ADMIN ------------------
+# ------------------ SETUP (ADMIN) ------------------
 
-@bot.tree.command(
-    name="setup",
-    description="Define o canal de logs",
-    default_permissions=discord.Permissions(administrator=True)
-)
+@bot.tree.command(name="setup", description="Define o canal de logs")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
     bot.log_channel_id = canal.id
@@ -48,13 +41,9 @@ async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
         f"✅ Canal de logs definido para {canal.mention}"
     )
 
-# ------------------ MODERAÇÃO ------------------
+# ------------------ BAN ------------------
 
-@bot.tree.command(
-    name="ban",
-    description="Banir um membro",
-    default_permissions=discord.Permissions(ban_members=True)
-)
+@bot.tree.command(name="ban", description="Banir um membro")
 @app_commands.checks.has_permissions(ban_members=True)
 async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo"):
     try:
@@ -68,11 +57,9 @@ async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: 
             ephemeral=True
         )
 
-@bot.tree.command(
-    name="kick",
-    description="Expulsar um membro",
-    default_permissions=discord.Permissions(kick_members=True)
-)
+# ------------------ KICK ------------------
+
+@bot.tree.command(name="kick", description="Expulsar um membro")
 @app_commands.checks.has_permissions(kick_members=True)
 async def kick(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo"):
     try:
@@ -82,15 +69,13 @@ async def kick(interaction: discord.Interaction, membro: discord.Member, motivo:
         )
     except:
         await interaction.response.send_message(
-            "❌ Não foi possível expulsar esse membro. Verifique permissões e hierarquia.",
+            "❌ Não foi possível expulsar esse membro.",
             ephemeral=True
         )
 
-@bot.tree.command(
-    name="mute",
-    description="Aplicar timeout em um membro",
-    default_permissions=discord.Permissions(moderate_members=True)
-)
+# ------------------ MUTE (TIMEOUT) ------------------
+
+@bot.tree.command(name="mute", description="Aplicar timeout em um membro")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def mute(interaction: discord.Interaction, membro: discord.Member, minutos: int):
     await interaction.response.defer()
@@ -104,15 +89,13 @@ async def mute(interaction: discord.Interaction, membro: discord.Member, minutos
         )
     except Exception as e:
         await interaction.followup.send(
-            "❌ Não foi possível aplicar o mute. Verifique permissões e hierarquia."
+            "❌ Não foi possível aplicar o mute."
         )
         print(f"Erro no mute: {e}")
 
-@bot.tree.command(
-    name="unmute",
-    description="Remover timeout de um membro",
-    default_permissions=discord.Permissions(moderate_members=True)
-)
+# ------------------ UNMUTE ------------------
+
+@bot.tree.command(name="unmute", description="Remover timeout de um membro")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def unmute(interaction: discord.Interaction, membro: discord.Member):
     await interaction.response.defer()
@@ -128,11 +111,9 @@ async def unmute(interaction: discord.Interaction, membro: discord.Member):
         )
         print(f"Erro no unmute: {e}")
 
-@bot.tree.command(
-    name="clear",
-    description="Apagar mensagens",
-    default_permissions=discord.Permissions(manage_messages=True)
-)
+# ------------------ CLEAR ------------------
+
+@bot.tree.command(name="clear", description="Apagar mensagens")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear(interaction: discord.Interaction, quantidade: int):
     await interaction.response.defer(ephemeral=True)
