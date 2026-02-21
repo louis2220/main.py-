@@ -300,60 +300,67 @@ QUICKLATEX_URL = "https://quicklatex.com/latex3.f"
 
 
 def build_inline_latex(text: str) -> str:
-    """Texto normal → \\text{...}, fórmulas $...$ ficam inline."""
+    """Texto normal vira \\text{} com espaços protegidos por ~."""
     parts = []
     last = 0
     for m in LATEX_PATTERN_INLINE.finditer(text):
         before = text[last:m.start()]
         if before:
-            safe = before.replace('%', r'\%').replace('&', r'\&').replace('#', r'\#')
+            # Substitui espaços por ~ (espaço protegido no LaTeX)
+            safe = (before
+                .replace('%', r'\%')
+                .replace('&', r'\&')
+                .replace('#', r'\#')
+                .replace(' ', '~')
+            )
             parts.append(r'\text{' + safe + '}')
         parts.append(m.group(1))
         last = m.end()
     after = text[last:]
     if after:
-        safe = after.replace('%', r'\%').replace('&', r'\&').replace('#', r'\#')
+        safe = (after
+            .replace('%', r'\%')
+            .replace('&', r'\&')
+            .replace('#', r'\#')
+            .replace(' ', '~')
+        )
         parts.append(r'\text{' + safe + '}')
     return ' '.join(parts)
 
 
 async def quicklatex_render(formula: str) -> bytes | None:
-    """
-    Chama QuickLaTeX via POST e retorna os bytes da imagem PNG.
-    Resposta: "0\n<url> <w> <h>" em caso de sucesso.
-    """
+    """POST para QuickLaTeX com bgcolor branco, baixa e retorna PNG."""
     payload = {
         "formula": formula,
-        "fsize": "20px",
+        "fsize": "17px",
         "out": "1",
         "preamble": "\\usepackage{amsmath}\\usepackage{amssymb}\\usepackage{amsfonts}",
+        "bgcolor": "white",
+        "fgcolor": "000000",
     }
     try:
         async with aiohttp.ClientSession() as session:
-            # Passo 1: pega a URL da imagem
             async with session.post(
                 QUICKLATEX_URL, data=payload,
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
-                text = await resp.text()
+                raw = await resp.text()
 
-            log.info(f"[LaTeX] QuickLaTeX resposta: {repr(text[:100])}")
-            lines = text.strip().splitlines()
-
+            log.info(f"[LaTeX] resposta: {repr(raw[:120])}")
+            lines = raw.strip().splitlines()
             if not lines or lines[0].strip() != "0":
-                log.warning(f"[LaTeX] Erro QuickLaTeX: {text[:200]}")
+                log.warning(f"[LaTeX] erro QuickLaTeX: {raw[:200]}")
                 return None
 
             img_url = lines[1].split()[0]
             if not img_url.startswith("http"):
                 return None
 
-            # Passo 2: baixa a imagem PNG
-            async with session.get(img_url, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
-                return await img_resp.read()
+            async with session.get(img_url, timeout=aiohttp.ClientTimeout(total=10)) as img:
+                return await img.read()
 
     except Exception as e:
-        log.warning(f"[LaTeX] Erro: {e}")
+        log.warning(f"[LaTeX] exceção: {e}")
         return None
 
 
@@ -370,13 +377,11 @@ class LatexView(View):
 
 
 async def send_latex(message: discord.Message, formula: str, original: str = "") -> None:
-    """Renderiza via QuickLaTeX e envia como arquivo PNG."""
     png = await quicklatex_render(formula)
     if not png:
         return
-
     file = discord.File(io.BytesIO(png), filename="formula.png")
-    embed = discord.Embed(color=0x2B2D31)
+    embed = discord.Embed(color=0xFFFFFF)
     embed.set_image(url="attachment://formula.png")
     try:
         await message.reply(
@@ -385,7 +390,7 @@ async def send_latex(message: discord.Message, formula: str, original: str = "")
             mention_author=False,
         )
     except discord.HTTPException as e:
-        log.warning(f"[LaTeX] Erro ao enviar: {e}")
+        log.warning(f"[LaTeX] erro ao enviar: {e}")
 
 
 @bot.event
@@ -399,16 +404,14 @@ async def on_message(message: discord.Message):
     block = LATEX_PATTERN_BLOCK.search(text)
     if block:
         formula = block.group(1).strip()
-        log.info(f"[LaTeX] Bloco display")
         await send_latex(message, formula, original=formula)
         return
 
-    # Inline $...$ — monta parágrafo completo com texto
+    # Inline — monta parágrafo completo com texto + fórmulas
     if not LATEX_PATTERN_INLINE.search(text):
         return
 
     latex = build_inline_latex(text)
-    log.info(f"[LaTeX] Inline: {latex[:80]}")
     await send_latex(message, latex, original=text)
 
 
