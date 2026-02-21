@@ -316,6 +316,8 @@ async def on_message(message: discord.Message):
                     f"🧮 {message.author.mention} renderizou automaticamente:\n```latex\n{formula}\n```"
         )
 
+        await bot.process_commands(message)
+
 # ===================== STATUS ROTATIVO =====================
 
 status_list = [
