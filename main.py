@@ -303,8 +303,12 @@ async def render_latex(formula: str) -> str | None:
     Formato real da resposta:
       Sucesso → "0\n<url> <largura> <altura>"
       Erro    → "<código != 0>\n<mensagem>"
+
+    Usa fundo branco + texto preto para máxima legibilidade (estilo TeXiT).
     """
-    payload = "\\dpi{300} \\bg_black \\color{white} " + formula
+    # \bg_white + sem \color = texto preto no fundo branco, alta legibilidade
+    # \dpi{200} = resolução suficientemente alta sem ficar pesado demais
+    payload = "\\dpi{200} \\bg_white " + formula
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -392,7 +396,7 @@ async def on_message(message: discord.Message):
                 pass
             continue
 
-        embed = discord.Embed(color=0x2B2D31)
+        embed = discord.Embed(color=0xFFFFFF)
         embed.set_image(url=url)
         embed.set_footer(text="Renderizado via QuickLaTeX")
 
@@ -429,4 +433,4 @@ async def before_rotate():
 # -------------------- RUN ------------------------
 # ==================================================
 
-bot.run(TOKEN)        
+bot.run(TOKEN)
