@@ -316,6 +316,17 @@ class LatexView(View):
         )
 
 
+async def send_latex(message: discord.Message, formula: str) -> None:
+    """Envia um embed com a fórmula renderizada."""
+    url = codecogs_url(formula)
+    embed = discord.Embed(color=0x2B2D31)
+    embed.set_image(url=url)
+    try:
+        await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
+    except discord.HTTPException as e:
+        log.warning(f"[LaTeX] Erro ao enviar embed: {e}")
+
+
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
@@ -323,51 +334,21 @@ async def on_message(message: discord.Message):
 
     text = message.content
 
-    # --- Bloco display $$ ... $$ → uma imagem com a fórmula isolada ---
+    # Bloco display $$ ... $$ — sempre uma imagem isolada
     block = LATEX_PATTERN_BLOCK.search(text)
     if block:
-        formula = block.group(1).strip()
-        url = codecogs_url(formula)
-        embed = discord.Embed(color=0x2B2D31)
-        embed.set_image(url=url)
-        try:
-            await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
-        except discord.HTTPException as e:
-            log.warning(f"[LaTeX] Erro: {e}")
+        await send_latex(message, block.group(1).strip())
         return
 
-    # --- Inline $...$ ---
+    # Inline $...$ — TODAS as fórmulas em UMA única imagem
     matches = LATEX_PATTERN_INLINE.findall(text)
     if not matches:
         return
 
-    # Se a mensagem é quase só fórmula (pouco texto ao redor), renderiza tudo junto
-    text_only = LATEX_PATTERN_INLINE.sub('', text).strip()
-    is_mostly_formula = len(text_only) < 25
-
-    if is_mostly_formula:
-        # Junta todas as fórmulas num único render
-        combined = r"\quad".join(matches)
-        url = codecogs_url(combined)
-        embed = discord.Embed(color=0x2B2D31)
-        embed.set_image(url=url)
-        try:
-            await message.reply(embed=embed, view=LatexView(combined), mention_author=False)
-        except discord.HTTPException as e:
-            log.warning(f"[LaTeX] Erro: {e}")
-    else:
-        # Tem muito texto: renderiza só as fórmulas, uma por embed (máx 3)
-        for formula in matches[:3]:
-            formula = formula.strip()
-            if not formula:
-                continue
-            url = codecogs_url(formula)
-            embed = discord.Embed(color=0x2B2D31)
-            embed.set_image(url=url)
-            try:
-                await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
-            except discord.HTTPException as e:
-                log.warning(f"[LaTeX] Erro: {e}")
+    # Junta todas as fórmulas separadas por \quad — uma imagem só, sem picotar
+    combined = r" \quad ".join(m.strip() for m in matches if m.strip())
+    if combined:
+        await send_latex(message, combined)
 
 
 # ==================================================
