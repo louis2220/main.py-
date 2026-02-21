@@ -1,14 +1,16 @@
+import asyncio
+import itertools
+import logging
+import os
+import re
+from datetime import timedelta
+from urllib.parse import quote_plus
+
+import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import tasks
 from discord.ui import View
-import os
-import re
-import itertools
-import logging
-import aiohttp
-from datetime import timedelta
-from urllib.parse import quote_plus
 
 # ==================================================
 # ------------------- LOGGING ----------------------
@@ -17,7 +19,7 @@ from urllib.parse import quote_plus
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 log = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID", "1163654753008484453"))
 
 if not TOKEN:
-    raise RuntimeError("❌ Variável de ambiente BOT_TOKEN não definida.")
+    raise RuntimeError("Variável de ambiente BOT_TOKEN não definida.")
 
 # ==================================================
 # ------------------- INTENTS ----------------------
@@ -59,24 +61,24 @@ class ModBot(discord.Client):
 
     async def on_ready(self):
         log.info(f"Bot online como {self.user} (ID: {self.user.id})")
-        rotate_status.start()
+        if not rotate_status.is_running():
+            rotate_status.start()
 
     async def on_app_command_error(
         self,
         interaction: discord.Interaction,
-        error: app_commands.AppCommandError
+        error: app_commands.AppCommandError,
     ):
-        msg = "❌ Ocorreu um erro ao executar esse comando."
-
         if isinstance(error, app_commands.MissingPermissions):
             msg = "❌ Você não tem permissão para usar este comando."
         elif isinstance(error, app_commands.BotMissingPermissions):
             msg = "❌ Eu não tenho permissões suficientes para executar isso."
         elif isinstance(error, app_commands.CommandOnCooldown):
             msg = f"⏳ Aguarde {error.retry_after:.1f}s antes de usar este comando novamente."
+        else:
+            msg = "❌ Ocorreu um erro ao executar esse comando."
 
         log.warning(f"Erro no comando '{interaction.command.name}': {error}")
-
         try:
             if interaction.response.is_done():
                 await interaction.followup.send(msg, ephemeral=True)
@@ -86,7 +88,6 @@ class ModBot(discord.Client):
             pass
 
     async def log_action(self, *, title: str, description: str, color: discord.Color = discord.Color.orange()):
-        """Envia um log para o canal configurado, se existir."""
         if not self.log_channel_id:
             return
         channel = self.get_channel(self.log_channel_id)
@@ -99,20 +100,6 @@ class ModBot(discord.Client):
             log.error(f"Falha ao enviar log: {e}")
 
 bot = ModBot()
-
-# ==================================================
-# --------- HELPER: SAFE RESPOND ------------------
-# ==================================================
-
-async def safe_respond(interaction: discord.Interaction, *args, **kwargs):
-    """Responde com defer ou response dependendo do estado."""
-    try:
-        if interaction.response.is_done():
-            await interaction.followup.send(*args, **kwargs)
-        else:
-            await interaction.response.send_message(*args, **kwargs)
-    except discord.HTTPException as e:
-        log.error(f"Falha ao responder interação: {e}")
 
 # ==================================================
 # ---------------- COMANDOS PÚBLICOS ---------------
@@ -132,8 +119,7 @@ async def ping(interaction: discord.Interaction):
 async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
     bot.log_channel_id = canal.id
     await interaction.response.send_message(
-        f"✅ Canal de logs definido para {canal.mention}",
-        ephemeral=True
+        f"✅ Canal de logs definido para {canal.mention}", ephemeral=True
     )
     log.info(f"Canal de logs atualizado para #{canal.name} ({canal.id})")
 
@@ -144,40 +130,26 @@ async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
 @bot.tree.command(name="ban", description="Banir um membro do servidor")
 @app_commands.checks.has_permissions(ban_members=True)
 @app_commands.describe(membro="Membro a ser banido", motivo="Motivo do banimento")
-async def ban(
-    interaction: discord.Interaction,
-    membro: discord.Member,
-    motivo: str = "Sem motivo especificado"
-):
+async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo especificado"):
     if membro == interaction.user:
         return await interaction.response.send_message("❌ Você não pode se banir.", ephemeral=True)
     if membro.top_role >= interaction.guild.me.top_role:
         return await interaction.response.send_message(
-            "❌ Não consigo banir esse membro (cargo superior ou igual ao meu).", ephemeral=True
+            "❌ Não consigo banir esse membro (cargo superior ao meu).", ephemeral=True
         )
-
     await interaction.response.defer()
-
     try:
-        await membro.send(
-            f"Você foi **banido** do servidor **{interaction.guild.name}**.\nMotivo: {motivo}"
-        )
+        await membro.send(f"Você foi **banido** do servidor **{interaction.guild.name}**.\nMotivo: {motivo}")
     except (discord.Forbidden, discord.HTTPException):
-        pass  # DMs fechadas
-
+        pass
     await membro.ban(reason=f"{interaction.user} — {motivo}", delete_message_days=0)
-
     embed = discord.Embed(
         title="🔨 Membro Banido",
         description=f"**Usuário:** {membro.mention} (`{membro}`)\n**Motivo:** {motivo}\n**Moderador:** {interaction.user.mention}",
-        color=discord.Color.red()
+        color=discord.Color.red(),
     )
     await interaction.followup.send(embed=embed)
-    await bot.log_action(
-        title="🔨 Ban",
-        description=f"{membro} banido por {interaction.user}.\nMotivo: {motivo}",
-        color=discord.Color.red()
-    )
+    await bot.log_action(title="🔨 Ban", description=f"{membro} banido por {interaction.user}.\nMotivo: {motivo}", color=discord.Color.red())
 
 # ==================================================
 # ------------------ UNBAN ------------------------
@@ -186,27 +158,17 @@ async def ban(
 @bot.tree.command(name="unban", description="Desbanir um usuário pelo ID")
 @app_commands.checks.has_permissions(ban_members=True)
 @app_commands.describe(user_id="ID do usuário banido", motivo="Motivo do desbanimento")
-async def unban(
-    interaction: discord.Interaction,
-    user_id: str,
-    motivo: str = "Sem motivo especificado"
-):
+async def unban(interaction: discord.Interaction, user_id: str, motivo: str = "Sem motivo especificado"):
     await interaction.response.defer(ephemeral=True)
-
     try:
         uid = int(user_id)
     except ValueError:
         return await interaction.followup.send("❌ ID inválido.", ephemeral=True)
-
     try:
         user = await bot.fetch_user(uid)
         await interaction.guild.unban(user, reason=f"{interaction.user} — {motivo}")
         await interaction.followup.send(f"✅ {user} (`{uid}`) foi desbanido.", ephemeral=True)
-        await bot.log_action(
-            title="✅ Unban",
-            description=f"{user} desbanido por {interaction.user}.\nMotivo: {motivo}",
-            color=discord.Color.green()
-        )
+        await bot.log_action(title="✅ Unban", description=f"{user} desbanido por {interaction.user}.\nMotivo: {motivo}", color=discord.Color.green())
     except discord.NotFound:
         await interaction.followup.send("❌ Usuário não encontrado ou não está banido.", ephemeral=True)
     except discord.HTTPException as e:
@@ -219,40 +181,26 @@ async def unban(
 @bot.tree.command(name="kick", description="Expulsar um membro do servidor")
 @app_commands.checks.has_permissions(kick_members=True)
 @app_commands.describe(membro="Membro a ser expulso", motivo="Motivo da expulsão")
-async def kick(
-    interaction: discord.Interaction,
-    membro: discord.Member,
-    motivo: str = "Sem motivo especificado"
-):
+async def kick(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo especificado"):
     if membro == interaction.user:
         return await interaction.response.send_message("❌ Você não pode se expulsar.", ephemeral=True)
     if membro.top_role >= interaction.guild.me.top_role:
         return await interaction.response.send_message(
-            "❌ Não consigo expulsar esse membro (cargo superior ou igual ao meu).", ephemeral=True
+            "❌ Não consigo expulsar esse membro (cargo superior ao meu).", ephemeral=True
         )
-
     await interaction.response.defer()
-
     try:
-        await membro.send(
-            f"Você foi **expulso** do servidor **{interaction.guild.name}**.\nMotivo: {motivo}"
-        )
+        await membro.send(f"Você foi **expulso** do servidor **{interaction.guild.name}**.\nMotivo: {motivo}")
     except (discord.Forbidden, discord.HTTPException):
         pass
-
     await membro.kick(reason=f"{interaction.user} — {motivo}")
-
     embed = discord.Embed(
         title="👢 Membro Expulso",
         description=f"**Usuário:** {membro.mention} (`{membro}`)\n**Motivo:** {motivo}\n**Moderador:** {interaction.user.mention}",
-        color=discord.Color.orange()
+        color=discord.Color.orange(),
     )
     await interaction.followup.send(embed=embed)
-    await bot.log_action(
-        title="👢 Kick",
-        description=f"{membro} expulso por {interaction.user}.\nMotivo: {motivo}",
-        color=discord.Color.orange()
-    )
+    await bot.log_action(title="👢 Kick", description=f"{membro} expulso por {interaction.user}.\nMotivo: {motivo}", color=discord.Color.orange())
 
 # ==================================================
 # ------------------ MUTE --------------------------
@@ -261,32 +209,19 @@ async def kick(
 @bot.tree.command(name="mute", description="Aplicar timeout em um membro")
 @app_commands.checks.has_permissions(moderate_members=True)
 @app_commands.describe(membro="Membro a silenciar", minutos="Duração em minutos (máx. 40320)")
-async def mute(
-    interaction: discord.Interaction,
-    membro: discord.Member,
-    minutos: app_commands.Range[int, 1, 40320]
-):
+async def mute(interaction: discord.Interaction, membro: discord.Member, minutos: app_commands.Range[int, 1, 40320]):
     if membro.top_role >= interaction.guild.me.top_role:
-        return await interaction.response.send_message(
-            "❌ Não consigo silenciar esse membro.", ephemeral=True
-        )
-
+        return await interaction.response.send_message("❌ Não consigo silenciar esse membro.", ephemeral=True)
     await interaction.response.defer()
-
     until = discord.utils.utcnow() + timedelta(minutes=minutos)
     await membro.timeout(until, reason=f"Mute por {interaction.user} — {minutos} min")
-
     embed = discord.Embed(
         title="🔇 Membro Silenciado",
         description=f"**Usuário:** {membro.mention}\n**Duração:** {minutos} minuto(s)\n**Moderador:** {interaction.user.mention}",
-        color=discord.Color.yellow()
+        color=discord.Color.yellow(),
     )
     await interaction.followup.send(embed=embed)
-    await bot.log_action(
-        title="🔇 Mute",
-        description=f"{membro} silenciado por {interaction.user} por {minutos} minuto(s).",
-        color=discord.Color.yellow()
-    )
+    await bot.log_action(title="🔇 Mute", description=f"{membro} silenciado por {interaction.user} por {minutos} minuto(s).", color=discord.Color.yellow())
 
 # ==================================================
 # ------------------ UNMUTE -----------------------
@@ -297,25 +232,16 @@ async def mute(
 @app_commands.describe(membro="Membro para remover o timeout")
 async def unmute(interaction: discord.Interaction, membro: discord.Member):
     await interaction.response.defer()
-
     if not membro.timed_out_until:
-        return await interaction.followup.send(
-            f"❌ {membro.mention} não está em timeout.", ephemeral=True
-        )
-
+        return await interaction.followup.send(f"❌ {membro.mention} não está em timeout.", ephemeral=True)
     await membro.timeout(None, reason=f"Unmute por {interaction.user}")
-
     embed = discord.Embed(
         title="🔊 Timeout Removido",
         description=f"**Usuário:** {membro.mention}\n**Moderador:** {interaction.user.mention}",
-        color=discord.Color.green()
+        color=discord.Color.green(),
     )
     await interaction.followup.send(embed=embed)
-    await bot.log_action(
-        title="🔊 Unmute",
-        description=f"Timeout de {membro} removido por {interaction.user}.",
-        color=discord.Color.green()
-    )
+    await bot.log_action(title="🔊 Unmute", description=f"Timeout de {membro} removido por {interaction.user}.", color=discord.Color.green())
 
 # ==================================================
 # ------------------ CLEAR ------------------------
@@ -324,98 +250,60 @@ async def unmute(interaction: discord.Interaction, membro: discord.Member):
 @bot.tree.command(name="clear", description="Apagar mensagens do canal")
 @app_commands.checks.has_permissions(manage_messages=True)
 @app_commands.describe(quantidade="Número de mensagens a apagar (1–100)")
-async def clear(
-    interaction: discord.Interaction,
-    quantidade: app_commands.Range[int, 1, 100]
-):
+async def clear(interaction: discord.Interaction, quantidade: app_commands.Range[int, 1, 100]):
     await interaction.response.defer(ephemeral=True)
-
     deleted = await interaction.channel.purge(limit=quantidade)
-
-    await interaction.followup.send(
-        f"✅ {len(deleted)} mensagem(ns) apagada(s).",
-        ephemeral=True
-    )
+    await interaction.followup.send(f"✅ {len(deleted)} mensagem(ns) apagada(s).", ephemeral=True)
     await bot.log_action(
         title="🗑️ Clear",
         description=f"{interaction.user} apagou {len(deleted)} mensagem(ns) em {interaction.channel.mention}.",
-        color=discord.Color.blurple()
+        color=discord.Color.blurple(),
     )
 
 # ==================================================
 # ---------------- FILOSOFIA / PESQUISA -----------
 # ==================================================
 
-@bot.tree.command(
-    name="filosofia",
-    description="Buscar artigos e recursos acadêmicos por tema"
-)
+@bot.tree.command(name="filosofia", description="Buscar artigos e recursos acadêmicos por tema")
 @app_commands.describe(termo="Tema ou título para buscar")
 async def filosofia(interaction: discord.Interaction, termo: str):
     await interaction.response.defer()
-
     encoded = quote_plus(f'"{termo}"')
     normal = quote_plus(termo)
-
-    links = {
-        "<a:51047animatedarrowwhite:1430338988765347850> Stanford Encyclopedia": (
-            f"https://plato.stanford.edu/search/searcher.py?query={normal}",
-            "SEP"
-        ),
-        "<a:51047animatedarrowwhite:1430338988765347850> Google Scholar": (
-            f"https://scholar.google.com/scholar?q={encoded}",
-            "Academic paper"
-        ),
-        "<a:51047animatedarrowwhite:1430338988765347850> PhilPapers": (
-            f"https://philpapers.org/s/{normal}",
-            "PhilPapers"
-        ),
-        "<a:51047animatedarrowwhite:1430338988765347850> Springer": (
-            f"https://link.springer.com/search?query={normal}",
-            "Journal article"
-        ),
-        "<a:51047animatedarrowwhite:1430338988765347850> Anna's Archive": (
-            f"https://annas-archive.org/search?q={normal}",
-            "Book sources"
-        ),
-        "<a:51047animatedarrowwhite:1430338988765347850> Internet Archive": (
-            f"https://archive.org/search?query={normal}",
-            "Digital archive"
-        ),
-    }
-
     titulo = termo.title()
-
+    links = {
+        "<a:51047animatedarrowwhite:1430338988765347850> Stanford Encyclopedia": (f"https://plato.stanford.edu/search/searcher.py?query={normal}", "SEP"),
+        "<a:51047animatedarrowwhite:1430338988765347850> Google Scholar": (f"https://scholar.google.com/scholar?q={encoded}", "Academic paper"),
+        "<a:51047animatedarrowwhite:1430338988765347850> PhilPapers": (f"https://philpapers.org/s/{normal}", "PhilPapers"),
+        "<a:51047animatedarrowwhite:1430338988765347850> Springer": (f"https://link.springer.com/search?query={normal}", "Journal article"),
+        "<a:51047animatedarrowwhite:1430338988765347850> Anna's Archive": (f"https://annas-archive.org/search?q={normal}", "Book sources"),
+        "<a:51047animatedarrowwhite:1430338988765347850> Internet Archive": (f"https://archive.org/search?query={normal}", "Digital archive"),
+    }
     embed = discord.Embed(
         title="<a:9582dsicordveriyblack:1430269158024810598> Recursos Acadêmicos",
         description=f"**Busca:** {termo}",
-        color=0x2B2D31
+        color=0x2B2D31,
     )
-
     for field_name, (url, label) in links.items():
-        embed.add_field(
-            name=field_name,
-            value=f"[{titulo} — {label}]({url})",
-            inline=False
-        )
-
+        embed.add_field(name=field_name, value=f"[{titulo} — {label}]({url})", inline=False)
     await interaction.followup.send(embed=embed)
 
 # ==================================================
 # ------------------ LATEX ------------------------
 # ==================================================
 
-LATEX_PATTERN = re.compile(r"\${1,2}([\s\S]+?)\${1,2}")  # \$ escapa o cifrão literal
+LATEX_PATTERN = re.compile(r"\${1,2}([\s\S]+?)\${1,2}")
 QUICKLATEX_URL = "https://quicklatex.com/latex3.f"
 
-async def render_latex(formula: str) -> str | None:
-    """Envia a fórmula para o QuickLaTeX e retorna a URL da imagem.
 
-    Formato da resposta do QuickLaTeX:
-      Sucesso → "OK\n<url> <largura> <altura>\n"
-      Erro    → "ERR\n<mensagem de erro>\n"
+async def render_latex(formula: str) -> str | None:
     """
-    # Monta o payload sem indentação extra — espaços extras causam erros de parse
+    Envia a fórmula para o QuickLaTeX e retorna a URL da imagem.
+
+    Formato real da resposta:
+      Sucesso → "0\n<url> <largura> <altura>"
+      Erro    → "<código != 0>\n<mensagem>"
+    """
     payload = "\\dpi{300} \\bg_black \\color{white} " + formula
 
     try:
@@ -426,41 +314,43 @@ async def render_latex(formula: str) -> str | None:
                     "formula": payload,
                     "fsize": "17px",
                     "out": "1",
-                    "preamble": (
-                        "\\usepackage{amsmath}"
-                        "\\usepackage{amssymb}"
-                        "\\usepackage{amsfonts}"
-                    ),
+                    "preamble": "\\usepackage{amsmath}\\usepackage{amssymb}\\usepackage{amsfonts}",
                 },
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 text = await resp.text()
 
-        lines = text.strip().splitlines()
+        log.info(f"[LaTeX] Resposta bruta: {repr(text[:200])}")
 
-        # Formato real da API QuickLaTeX:
-        #   Sucesso → "0\n<url> <w> <h>"
-        #   Erro    → "<código>\n<mensagem>"  (código != 0)
+        lines = text.strip().splitlines()
         if not lines:
-            log.warning(f"QuickLaTeX retornou resposta vazia para '{formula}'")
+            log.warning("[LaTeX] Resposta vazia do QuickLaTeX.")
             return None
 
         status = lines[0].strip()
         if status != "0":
-            log.warning(f"QuickLaTeX retornou erro para '{formula}': {text[:300]}")
+            log.warning(f"[LaTeX] Erro do QuickLaTeX (status={status}): {text[:300]}")
             return None
 
         if len(lines) < 2:
-            log.warning(f"QuickLaTeX sem URL na resposta: {text[:300]}")
+            log.warning("[LaTeX] Resposta sem URL.")
             return None
 
         url = lines[1].split()[0]
-        log.info(f"[LaTeX] URL válida extraída: {url}")
-        return url if url.startswith("http") else None
+        if not url.startswith("http"):
+            log.warning(f"[LaTeX] URL inválida: {url}")
+            return None
 
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        log.warning(f"Timeout/erro de rede ao renderizar LaTeX: {e}")
+        log.info(f"[LaTeX] URL extraída: {url}")
+        return url
+
+    except asyncio.TimeoutError:
+        log.warning("[LaTeX] Timeout ao contatar QuickLaTeX.")
         return None
+    except aiohttp.ClientError as e:
+        log.warning(f"[LaTeX] Erro de rede: {e}")
+        return None
+
 
 class LatexView(View):
     def __init__(self, formula: str):
@@ -470,9 +360,9 @@ class LatexView(View):
     @discord.ui.button(label="📋 Copiar fórmula", style=discord.ButtonStyle.secondary)
     async def copy_formula(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(
-            f"```latex\n{self.formula}\n```",
-            ephemeral=True
+            f"```latex\n{self.formula}\n```", ephemeral=True
         )
+
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -490,15 +380,13 @@ async def on_message(message: discord.Message):
         if not formula:
             continue
 
-        log.info(f"[LaTeX] Renderizando: {repr(formula)}")
         url = await render_latex(formula)
-        log.info(f"[LaTeX] URL retornada: {url}")
 
         if not url:
             try:
                 await message.reply(
                     "❌ Não foi possível renderizar a fórmula. Verifique a sintaxe LaTeX.",
-                    mention_author=False
+                    mention_author=False,
                 )
             except discord.HTTPException:
                 pass
@@ -511,7 +399,7 @@ async def on_message(message: discord.Message):
         try:
             await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
         except discord.HTTPException as e:
-            log.warning(f"Erro ao responder com LaTeX: {e}")
+            log.warning(f"[LaTeX] Erro ao enviar embed: {e}")
 
 # ==================================================
 # ---------------- STATUS ROTATIVO ----------------
@@ -526,16 +414,19 @@ _STATUS_LIST = [
 
 _cycle_status = itertools.cycle(_STATUS_LIST)
 
+
 @tasks.loop(seconds=30)
 async def rotate_status():
     name, activity_type = next(_cycle_status)
-    await bot.change_presence(
-        activity=discord.Activity(type=activity_type, name=name)
-    )
+    await bot.change_presence(activity=discord.Activity(type=activity_type, name=name))
+
 
 @rotate_status.before_loop
 async def before_rotate():
     await bot.wait_until_ready()
 
 # ==================================================
-# -------------------- RUN -
+# -------------------- RUN ------------------------
+# ==================================================
+
+bot.run(TOKEN)        
