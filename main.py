@@ -409,20 +409,22 @@ LATEX_PATTERN = re.compile(r"\${1,2}([\s\S]+?)\${1,2}")
 QUICKLATEX_URL = "https://quicklatex.com/latex3.f"
 
 async def render_latex(formula: str) -> str | None:
-    """Envia a fórmula para o QuickLaTeX e retorna a URL da imagem."""
-    payload = (
-        f"\\dpi{{300}}\n"
-        f"\\bg_black\n"
-        f"\\color{{white}}\n"
-        f"{formula}"
-    )
+    """Envia a fórmula para o QuickLaTeX e retorna a URL da imagem.
+
+    Formato da resposta do QuickLaTeX:
+      Sucesso → "OK\n<url> <largura> <altura>\n"
+      Erro    → "ERR\n<mensagem de erro>\n"
+    """
+    # Monta o payload sem indentação extra — espaços extras causam erros de parse
+    payload = f"\\dpi{{300}} \\bg_black \\color{{white}} {formula}"
+
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 QUICKLATEX_URL,
                 data={
                     "formula": payload,
-                    "fsize": "14px",
+                    "fsize": "17px",
                     "out": "1",
                     "preamble": (
                         "\\usepackage{amsmath}"
@@ -434,14 +436,21 @@ async def render_latex(formula: str) -> str | None:
             ) as resp:
                 text = await resp.text()
 
-        if not text or "error" in text.lower():
+        lines = text.strip().splitlines()
+
+        # Linha 0 = status (OK ou ERR), linha 1 = "<url> <w> <h>"
+        if not lines or lines[0].strip().upper() != "OK":
+            log.warning(f"QuickLaTeX retornou erro para '{formula}': {text[:200]}")
             return None
 
-        url = text.split()[0]
+        if len(lines) < 2:
+            return None
+
+        url = lines[1].split()[0]
         return url if url.startswith("http") else None
 
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        log.warning(f"Erro ao renderizar LaTeX: {e}")
+        log.warning(f"Timeout/erro de rede ao renderizar LaTeX: {e}")
         return None
 
 class LatexView(View):
