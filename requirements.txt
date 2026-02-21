@@ -1,8 +1,4 @@
-discord.py==2.3.2
-openai
-requests
-beautifulsoup4
+discord.py>=2.4.0
 PyNaCl
 aiohttp
-nixpacks.toml
 matplotlib
