@@ -296,24 +296,41 @@ LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([\s\S]+?)\$\$')
 LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
 
 
-def codecogs_url(formula: str) -> str:
-    """Gera URL PNG CodeCogs: fundo transparente, texto branco, DPI 150."""
+def build_inline_latex(text: str) -> str:
+    """
+    Converte mensagem em LaTeX completo:
+    texto normal → \text{...}, fórmulas $...$ ficam inline.
+    """
+    parts = []
+    last = 0
+    for m in LATEX_PATTERN_INLINE.finditer(text):
+        before = text[last:m.start()]
+        if before:
+            safe = before.replace('%', r'\%').replace('&', r'\&').replace('#', r'\#')
+            parts.append(r'\text{' + safe + '}')
+        parts.append(m.group(1))
+        last = m.end()
+    after = text[last:]
+    if after:
+        safe = after.replace('%', r'\%').replace('&', r'\&').replace('#', r'\#')
+        parts.append(r'\text{' + safe + '}')
+    return ' '.join(parts)
+
+
+def mathvercel_url(formula: str, display: bool = False) -> str:
+    """
+    Usa math.vercel.app (MathJax) — suporta \text{} com texto real.
+    Retorna SVG diretamente, sem POST, sem parsing.
+    """
     from urllib.parse import quote
-    phantom = "\\phantom{Xx}"
-    params = "\\dpi{150}\\color{white} " + phantom + formula + phantom
-    return "https://latex.codecogs.com/png.latex?" + quote(params)
-
-
-def extract_unique_formulas(text: str) -> list[str]:
-    """Extrai fórmulas únicas mantendo ordem de aparição."""
-    seen = set()
-    result = []
-    for m in LATEX_PATTERN_INLINE.findall(text):
-        m = m.strip()
-        if m and m not in seen:
-            seen.add(m)
-            result.append(m)
-    return result
+    mode = "display" if display else "inline"
+    return (
+        f"https://math.vercel.app/"
+        f"?from={quote(formula)}"
+        f"&color=white"
+        f"&fontSize=20"
+        f"&mode={mode}"
+    )
 
 
 class LatexView(View):
@@ -328,8 +345,8 @@ class LatexView(View):
         )
 
 
-async def send_latex(message: discord.Message, formula: str) -> None:
-    url = codecogs_url(formula)
+async def send_latex(message: discord.Message, formula: str, display: bool = False) -> None:
+    url = mathvercel_url(formula, display=display)
     embed = discord.Embed(color=0x2B2D31)
     embed.set_image(url=url)
     try:
@@ -345,19 +362,18 @@ async def on_message(message: discord.Message):
 
     text = message.content
 
-    # Bloco display $$ ... $$ — fórmula isolada
+    # Bloco display $$ ... $$ — modo display, centralizado
     block = LATEX_PATTERN_BLOCK.search(text)
     if block:
-        await send_latex(message, block.group(1).strip())
+        await send_latex(message, block.group(1).strip(), display=True)
         return
 
-    # Inline: extrai todas as fórmulas únicas e junta numa imagem só
-    unique = extract_unique_formulas(text)
-    if not unique:
+    # Inline $...$ — monta parágrafo completo com texto e fórmulas
+    if not LATEX_PATTERN_INLINE.search(text):
         return
 
-    combined = r",\quad ".join(unique)
-    await send_latex(message, combined)
+    latex = build_inline_latex(text)
+    await send_latex(message, latex, display=False)
 
 
 # ==================================================
