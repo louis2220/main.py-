@@ -292,29 +292,51 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ------------------ LATEX ------------------------
 # ==================================================
 
-LATEX_PATTERN = re.compile(r"\${1,2}([\s\S]+?)\${1,2}")
+LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([ \s\S]+?)\$\$')
+LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
+
+
+def message_to_latex(text: str) -> str | None:
+    """
+    Converte a mensagem inteira num único bloco LaTeX (estilo TeXiT).
+    - $$ ... $$ → renderiza só a fórmula em modo display
+    - $...$ inline → monta parágrafo com \text{} ao redor do texto normal
+    - Sem LaTeX → retorna None
+    """
+    # Bloco display tem prioridade
+    block = LATEX_PATTERN_BLOCK.search(text)
+    if block:
+        return block.group(1).strip()
+
+    # Precisa ter pelo menos um inline
+    if not LATEX_PATTERN_INLINE.search(text):
+        return None
+
+    parts = []
+    last = 0
+    for m in LATEX_PATTERN_INLINE.finditer(text):
+        before = text[last:m.start()]
+        if before:
+            safe = before.replace('%', r'\%')
+            parts.append(r'\text{' + safe + '}')
+        parts.append(m.group(1))
+        last = m.end()
+    after = text[last:]
+    if after:
+        safe = after.replace('%', r'\%')
+        parts.append(r'\text{' + safe + '}')
+
+    return ' '.join(parts)
 
 
 def codecogs_url(formula: str) -> str:
     """
-    Gera URL do CodeCogs para renderizar LaTeX como PNG.
-    - Fundo branco, texto preto, DPI 150 — legível em qualquer tema
-    - GET puro: sem POST, sem parsing, sem chance de corromper a fórmula
+    Gera URL do CodeCogs: GET puro, fundo branco, texto preto.
+    DPI 110 = tamanho proporcional ao texto do Discord, sem cortar.
     """
     from urllib.parse import quote
-    prefix = "\\dpi{150}\\bg{white}\\fg{black} "
+    prefix = "\\dpi{110}\\bg{white}\\fg{black} "
     return "https://latex.codecogs.com/png.latex?" + quote(prefix + formula)
-
-
-async def render_latex(formula: str) -> str | None:
-    """Valida a fórmula gerando a URL e retorna. Sem requisição necessária."""
-    try:
-        url = codecogs_url(formula)
-        log.info(f"[LaTeX] URL gerada: {url}")
-        return url
-    except Exception as e:
-        log.warning(f"[LaTeX] Erro ao gerar URL: {e}")
-        return None
 
 
 
@@ -335,37 +357,24 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    matches = LATEX_PATTERN.findall(message.content)
-    log.info(f"[on_message] {message.author}: {repr(message.content)} → matches={matches}")
+    latex = message_to_latex(message.content)
+    log.info(f"[on_message] {message.author}: latex_gerado={bool(latex)}")
 
-    if not matches:
+    if not latex:
         return
 
-    for formula in matches[:3]:
-        formula = formula.strip()
-        if not formula:
-            continue
+    url = codecogs_url(latex)
+    log.info(f"[LaTeX] URL gerada com sucesso")
 
-        url = await render_latex(formula)
+    embed = discord.Embed(color=0xFFFFFF)
+    embed.set_image(url=url)
+    embed.set_footer(text="Renderizado via CodeCogs")
 
-        if not url:
-            try:
-                await message.reply(
-                    "❌ Não foi possível renderizar a fórmula. Verifique a sintaxe LaTeX.",
-                    mention_author=False,
-                )
-            except discord.HTTPException:
-                pass
-            continue
+    try:
+        await message.reply(embed=embed, view=LatexView(message.content), mention_author=False)
+    except discord.HTTPException as e:
+        log.warning(f"[LaTeX] Erro ao enviar embed: {e}")
 
-        embed = discord.Embed(color=0xFFFFFF)
-        embed.set_image(url=url)
-        embed.set_footer(text="Renderizado via QuickLaTeX")
-
-        try:
-            await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
-        except discord.HTTPException as e:
-            log.warning(f"[LaTeX] Erro ao enviar embed: {e}")
 
 # ==================================================
 # ---------------- STATUS ROTATIVO ----------------
