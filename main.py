@@ -140,54 +140,73 @@ async def clear(interaction: discord.Interaction, quantidade: int):
 # ==================================================
 # ---------------- PESQUISA FILOSOFIA ----------------
 # ==================================================
+
+from urllib.parse import quote_plus
+
 @bot.tree.command(
     name="filosofia",
-    description="Pesquisar termo na Stanford Encyclopedia + Google Scholar/Google"
+    description="Buscar artigos filosóficos por título"
 )
 async def filosofia(interaction: discord.Interaction, termo: str):
     await interaction.response.defer()
 
-    sep_url = f"https://plato.stanford.edu/search/searcher.py?query={termo.replace(' ', '+')}"
-    scholar_url = f"https://scholar.google.com/scholar?q={termo.replace(' ', '+')}"
-    google_url = f"https://www.google.com/search?q={termo.replace(' ', '+')}"
+    exact = f"\"{termo}\""
+    encoded = quote_plus(exact)
+    normal = quote_plus(termo)
+
+    # links
+    sep_url = f"https://plato.stanford.edu/search/searcher.py?query={normal}"
+    scholar_url = f"https://scholar.google.com/scholar?q={encoded}"
+    springer_url = f"https://link.springer.com/search?query={normal}"
+    annas_url = f"https://annas-archive.org/search?q={normal}"
+    philpapers_url = f"https://philpapers.org/s/{normal}"
+    archive_url = f"https://archive.org/search?query={normal}"
+
+    titulo = termo.title()
 
     embed = discord.Embed(
-        title="<:5508discordstagechannel:1430269231982973069> Pesquisa Filosofia & Teologia",
-        description=f"**Termo pesquisado:** {termo}",
+        title="<a:51047animatedarrowwhite:1430338988765347850> Resultado filosófico",
+        description=f"**Busca:** {termo}",
         color=0x2b2d31
     )
 
     embed.add_field(
-        name="<a:1812purple:1430339025520164974> Stanford Encyclopedia",
-        value=f"[Pesquisar artigo na SEP]({sep_url})",
+        name="<a:51047animatedarrowwhite:1430338988765347850> Stanford Encyclopedia",
+        value=f"[{titulo} — SEP]({sep_url})",
         inline=False
     )
 
     embed.add_field(
-        name="<a:1503hearts:1430339028720549908> Google Scholar",
-        value=f"[Pesquisar artigos acadêmicos]({scholar_url})",
+        name="<a:51047animatedarrowwhite:1430338988765347850> Scholar",
+        value=f"[{titulo} — Academic paper]({scholar_url})",
         inline=False
     )
 
     embed.add_field(
-        name="<a:8865gloading:1430269021374119936> Google",
-        value=f"[Pesquisar no Google]({google_url})",
+        name="<a:51047animatedarrowwhite:1430338988765347850> PhilPapers",
+        value=f"[{titulo} — PhilPapers entry]({philpapers_url})",
         inline=False
     )
 
-    embed.set_footer(text="Fonte acadêmica + pesquisa online")
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> Springer",
+        value=f"[{titulo} — Journal article]({springer_url})",
+        inline=False
+    )
+
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> Library",
+        value=f"[{titulo} — Book sources]({annas_url})",
+        inline=False
+    )
+
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> Archive",
+        value=f"[{titulo} — Digital archive]({archive_url})",
+        inline=False
+    )
+
     await interaction.followup.send(embed=embed)
-
-# ==================================================
-# ------------------- RUN ------------------------
-# ==================================================
-
-from urllib.parse import quote_plus
-import discord
-from discord.ext import tasks
-from discord.ui import View
-import itertools
-
 
 # ===================== LATEX VIEW =====================
 
