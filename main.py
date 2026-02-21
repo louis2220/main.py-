@@ -184,47 +184,54 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 
 from urllib.parse import quote_plus
 import discord
-from discord.ui import View, Button
+from discord.ext import tasks
+from discord.ui import View
+import itertools
 
 
-# ========= BOTÕES =========
+# ===================== LATEX VIEW =====================
 
 class LatexView(View):
     def __init__(self, formula):
         super().__init__(timeout=None)
         self.formula = formula
+        self.light = False
 
-        copy_btn = Button(label="Copiar fórmula", style=discord.ButtonStyle.gray)
-        copy_btn.callback = self.copy_formula
-
-        dark_btn = Button(label="Modo claro", style=discord.ButtonStyle.blurple)
-        dark_btn.callback = self.light_mode
-
-        self.add_item(copy_btn)
-        self.add_item(dark_btn)
-
-    async def copy_formula(self, interaction: discord.Interaction):
+    @discord.ui.button(label="Copiar fórmula", style=discord.ButtonStyle.gray)
+    async def copy_formula(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(f"`{self.formula}`", ephemeral=True)
 
-    async def light_mode(self, interaction: discord.Interaction):
-        latex = f"\\dpi{{300}}\\color{{black}}{{{self.formula}}}"
+    @discord.ui.button(label="Modo claro", style=discord.ButtonStyle.blurple)
+    async def toggle_mode(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+        self.light = not self.light
+
+        if self.light:
+            latex = f"\\dpi{{300}}\\color{{black}}{{{self.formula}}}"
+            embed_color = 0xFFFFFF
+            button.label = "Modo escuro"
+        else:
+            latex = f"\\dpi{{300}}\\color{{white}}{{{self.formula}}}"
+            embed_color = 0x2B2D31
+            button.label = "Modo claro"
+
         url = f"https://latex.codecogs.com/png.image?{quote_plus(latex)}"
 
-        embed = discord.Embed(color=0xFFFFFF)
+        embed = discord.Embed(color=embed_color)
         embed.set_image(url=url)
 
-        await interaction.response.edit_message(embed=embed)
+        await interaction.response.edit_message(embed=embed, view=self)
 
 
-# ========= COMANDO =========
+# ===================== COMANDO LATEX =====================
 
 @bot.tree.command(name="latex", description="Renderiza fórmulas em LaTeX")
 async def latex(interaction: discord.Interaction, formula: str):
     await interaction.response.defer()
 
     try:
-        # limpa markdown latex
         formula = formula.strip()
+
         if formula.startswith("$$") and formula.endswith("$$"):
             formula = formula[2:-2]
 
@@ -234,9 +241,7 @@ async def latex(interaction: discord.Interaction, formula: str):
         formula = formula.strip()
 
         latex = f"\\dpi{{300}}\\color{{white}}{{{formula}}}"
-        encoded = quote_plus(latex)
-
-        url = f"https://latex.codecogs.com/png.image?{encoded}"
+        url = f"https://latex.codecogs.com/png.image?{quote_plus(latex)}"
 
         embed = discord.Embed(color=0x2B2D31)
         embed.set_image(url=url)
@@ -246,7 +251,7 @@ async def latex(interaction: discord.Interaction, formula: str):
             view=LatexView(formula)
         )
 
-        # log
+        # logs
         if getattr(bot, "log_channel_id", None):
             log = bot.get_channel(bot.log_channel_id)
             if log:
@@ -254,6 +259,40 @@ async def latex(interaction: discord.Interaction, formula: str):
 
     except Exception as e:
         await interaction.followup.send(f"❌ Erro: {e}")
+
+
+# ===================== STATUS ROTATIVO =====================
+
+status_list = [
+    "🩵 Aprendendo matemática",
+    "⚡ Olimpíadas",
+    "🏆 OBMEP",
+    "🏮 Assistindo filosofia"
+]
+
+cycle_status = itertools.cycle(status_list)
+
+
+@tasks.loop(seconds=30)
+async def rotate_status():
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.watching,
+            name=next(cycle_status)
+        )
+    )
+
+
+# ===================== ON READY =====================
+
+@bot.event
+async def on_ready():
+    rotate_status.start()
+
+    # sincroniza slash commands (pra aparecer no perfil)
+    await bot.tree.sync()
+
+    print(f"Logado como {bot.user}")
 
 # ==================== LOGS DE MODERAÇÃO ====================
 
