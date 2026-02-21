@@ -438,15 +438,24 @@ async def render_latex(formula: str) -> str | None:
 
         lines = text.strip().splitlines()
 
-        # Linha 0 = status (OK ou ERR), linha 1 = "<url> <w> <h>"
-        if not lines or lines[0].strip().upper() != "OK":
-            log.warning(f"QuickLaTeX retornou erro para '{formula}': {text[:200]}")
+        # Formato real da API QuickLaTeX:
+        #   Sucesso → "0\n<url> <w> <h>"
+        #   Erro    → "<código>\n<mensagem>"  (código != 0)
+        if not lines:
+            log.warning(f"QuickLaTeX retornou resposta vazia para '{formula}'")
+            return None
+
+        status = lines[0].strip()
+        if status != "0":
+            log.warning(f"QuickLaTeX retornou erro para '{formula}': {text[:300]}")
             return None
 
         if len(lines) < 2:
+            log.warning(f"QuickLaTeX sem URL na resposta: {text[:300]}")
             return None
 
         url = lines[1].split()[0]
+        log.info(f"[LaTeX] URL válida extraída: {url}")
         return url if url.startswith("http") else None
 
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
@@ -529,9 +538,4 @@ async def before_rotate():
     await bot.wait_until_ready()
 
 # ==================================================
-# -------------------- RUN ------------------------
-# ==================================================
-
-import asyncio  # noqa: E402 (importado aqui para evitar circular no topo)
-
-bot.run(TOKEN, log_handler=None)  # log_handler=None evita log duplicado do discord.py
+# -------------------- RUN -
