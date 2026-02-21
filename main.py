@@ -296,48 +296,12 @@ LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([ \s\S]+?)\$\$')
 LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
 
 
-def message_to_latex(text: str) -> str | None:
-    """
-    Converte a mensagem inteira num único bloco LaTeX (estilo TeXiT).
-    - $$ ... $$ → renderiza só a fórmula em modo display
-    - $...$ inline → monta parágrafo com \text{} ao redor do texto normal
-    - Sem LaTeX → retorna None
-    """
-    # Bloco display tem prioridade
-    block = LATEX_PATTERN_BLOCK.search(text)
-    if block:
-        return block.group(1).strip()
-
-    # Precisa ter pelo menos um inline
-    if not LATEX_PATTERN_INLINE.search(text):
-        return None
-
-    parts = []
-    last = 0
-    for m in LATEX_PATTERN_INLINE.finditer(text):
-        before = text[last:m.start()]
-        if before:
-            safe = before.replace('%', r'\%')
-            parts.append(r'\text{' + safe + '}')
-        parts.append(m.group(1))
-        last = m.end()
-    after = text[last:]
-    if after:
-        safe = after.replace('%', r'\%')
-        parts.append(r'\text{' + safe + '}')
-
-    return ' '.join(parts)
-
-
 def codecogs_url(formula: str) -> str:
-    """
-    Gera URL do CodeCogs: GET puro, fundo branco, texto preto.
-    DPI 110 = tamanho proporcional ao texto do Discord, sem cortar.
-    """
+    """Gera URL PNG CodeCogs: fundo transparente, texto branco, DPI 150."""
     from urllib.parse import quote
-    prefix = "\\dpi{110}\\bg{white}\\fg{black} "
-    return "https://latex.codecogs.com/png.latex?" + quote(prefix + formula)
-
+    base = "https://latex.codecogs.com/png.latex?"
+    params = "\\dpi{150}\\color{white} " + formula
+    return base + quote(params)
 
 
 class LatexView(View):
@@ -357,23 +321,42 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    latex = message_to_latex(message.content)
-    log.info(f"[on_message] {message.author}: latex_gerado={bool(latex)}")
+    content_msg = message.content
 
-    if not latex:
+    # Prioridade: bloco $$ ... $$
+    block = LATEX_PATTERN_BLOCK.search(content_msg)
+    if block:
+        formula = block.group(1).strip()
+        log.info(f"[LaTeX] Bloco display: {formula[:60]!r}")
+        url = codecogs_url(formula)
+        embed = discord.Embed(color=0x2B2D31)
+        embed.set_image(url=url)
+        embed.set_footer(text="Renderizado via CodeCogs")
+        try:
+            await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
+        except discord.HTTPException as e:
+            log.warning(f"[LaTeX] Erro ao enviar embed: {e}")
         return
 
-    url = codecogs_url(latex)
-    log.info(f"[LaTeX] URL gerada com sucesso")
+    # Inline: renderiza cada $...$ isoladamente (uma imagem por fórmula)
+    matches = LATEX_PATTERN_INLINE.findall(content_msg)
+    if not matches:
+        return
 
-    embed = discord.Embed(color=0xFFFFFF)
-    embed.set_image(url=url)
-    embed.set_footer(text="Renderizado via CodeCogs")
+    log.info(f"[LaTeX] {len(matches)} fórmula(s) inline: {matches[:3]}")
 
-    try:
-        await message.reply(embed=embed, view=LatexView(message.content), mention_author=False)
-    except discord.HTTPException as e:
-        log.warning(f"[LaTeX] Erro ao enviar embed: {e}")
+    for formula in matches[:3]:
+        formula = formula.strip()
+        if not formula:
+            continue
+        url = codecogs_url(formula)
+        embed = discord.Embed(color=0x2B2D31)
+        embed.set_image(url=url)
+        embed.set_footer(text="Renderizado via CodeCogs")
+        try:
+            await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
+        except discord.HTTPException as e:
+            log.warning(f"[LaTeX] Erro ao enviar embed: {e}")
 
 
 # ==================================================
