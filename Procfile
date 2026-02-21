@@ -1,1 +1,6 @@
-worker: python main.py
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python main.py"
+restartPolicyType = "always"
