@@ -7,9 +7,6 @@ from datetime import timedelta
 from urllib.parse import quote_plus
 
 import io
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import aiohttp
 import discord
 from discord import app_commands
@@ -296,11 +293,13 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ------------------ LATEX ------------------------
 # ==================================================
 
-LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([\s\S]+?)\$\$')
+LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([ \s\S]+?)\$\$')
 LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
 
+QUICKLATEX_URL = "https://quicklatex.com/latex3.f"
 
-def build_latex_formula(text: str) -> str:
+
+def build_inline_latex(text: str) -> str:
     """Texto normal → \\text{...}, fórmulas $...$ ficam inline."""
     parts = []
     last = 0
@@ -318,43 +317,44 @@ def build_latex_formula(text: str) -> str:
     return ' '.join(parts)
 
 
-def render_latex_png(formula: str, fontsize: int = 14) -> bytes:
+async def quicklatex_render(formula: str) -> bytes | None:
     """
-    Renderiza LaTeX localmente com matplotlib.
-    Retorna bytes PNG com fundo transparente e texto branco.
+    Chama QuickLaTeX via POST e retorna os bytes da imagem PNG.
+    Resposta: "0\n<url> <w> <h>" em caso de sucesso.
     """
-    fig = plt.figure(figsize=(0.01, 0.01))
-    fig.patch.set_alpha(0)
+    payload = {
+        "formula": formula,
+        "fsize": "20px",
+        "out": "1",
+        "preamble": "\\usepackage{amsmath}\\usepackage{amssymb}\\usepackage{amsfonts}",
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Passo 1: pega a URL da imagem
+            async with session.post(
+                QUICKLATEX_URL, data=payload,
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                text = await resp.text()
 
-    text_obj = fig.text(
-        0, 0, f"${formula}$",
-        fontsize=fontsize,
-        color='white',
-        ha='left', va='bottom',
-        usetex=False,  # usa mathtext do matplotlib, sem precisar de LaTeX instalado
-    )
+            log.info(f"[LaTeX] QuickLaTeX resposta: {repr(text[:100])}")
+            lines = text.strip().splitlines()
 
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    bbox = text_obj.get_window_extent(renderer=renderer)
+            if not lines or lines[0].strip() != "0":
+                log.warning(f"[LaTeX] Erro QuickLaTeX: {text[:200]}")
+                return None
 
-    pad = 12
-    dpi = fig.dpi
-    w = (bbox.width + pad * 2) / dpi
-    h = (bbox.height + pad * 2) / dpi
-    fig.set_size_inches(max(w, 0.5), max(h, 0.3))
-    text_obj.set_position((
-        pad / (bbox.width + pad * 2),
-        pad / (bbox.height + pad * 2),
-    ))
+            img_url = lines[1].split()[0]
+            if not img_url.startswith("http"):
+                return None
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=dpi,
-                facecolor='none', edgecolor='none',
-                bbox_inches='tight', pad_inches=0.08)
-    plt.close(fig)
-    buf.seek(0)
-    return buf.read()
+            # Passo 2: baixa a imagem PNG
+            async with session.get(img_url, timeout=aiohttp.ClientTimeout(total=10)) as img_resp:
+                return await img_resp.read()
+
+    except Exception as e:
+        log.warning(f"[LaTeX] Erro: {e}")
+        return None
 
 
 class LatexView(View):
@@ -370,23 +370,17 @@ class LatexView(View):
 
 
 async def send_latex(message: discord.Message, formula: str, original: str = "") -> None:
-    """Renderiza localmente e envia como arquivo PNG."""
-    try:
-        png_bytes = await asyncio.get_event_loop().run_in_executor(
-            None, render_latex_png, formula
-        )
-    except Exception as e:
-        log.warning(f"[LaTeX] Erro ao renderizar: {e}")
+    """Renderiza via QuickLaTeX e envia como arquivo PNG."""
+    png = await quicklatex_render(formula)
+    if not png:
         return
 
-    file = discord.File(io.BytesIO(png_bytes), filename="formula.png")
+    file = discord.File(io.BytesIO(png), filename="formula.png")
     embed = discord.Embed(color=0x2B2D31)
     embed.set_image(url="attachment://formula.png")
-
     try:
         await message.reply(
-            embed=embed,
-            file=file,
+            embed=embed, file=file,
             view=LatexView(original or formula),
             mention_author=False,
         )
@@ -409,12 +403,12 @@ async def on_message(message: discord.Message):
         await send_latex(message, formula, original=formula)
         return
 
-    # Inline $...$ — monta parágrafo completo
+    # Inline $...$ — monta parágrafo completo com texto
     if not LATEX_PATTERN_INLINE.search(text):
         return
 
-    latex = build_latex_formula(text)
-    log.info(f"[LaTeX] Inline")
+    latex = build_inline_latex(text)
+    log.info(f"[LaTeX] Inline: {latex[:80]}")
     await send_latex(message, latex, original=text)
 
 
