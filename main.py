@@ -293,104 +293,120 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ------------------ LATEX ------------------------
 # ==================================================
 
-LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([ \s\S]+?)\$\$')
-LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
+# Detecta $$ ... $$ (bloco) e $ ... $ (inline)
+LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([\s\S]+?)\$\$')
+LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$', re.DOTALL)
 
 QUICKLATEX_URL = "https://quicklatex.com/latex3.f"
 
-
-def build_inline_latex(text: str) -> str:
-    """Texto normal vira \\text{} com espaços protegidos por ~."""
-    parts = []
-    last = 0
-    for m in LATEX_PATTERN_INLINE.finditer(text):
-        before = text[last:m.start()]
-        if before:
-            # Substitui espaços por ~ (espaço protegido no LaTeX)
-            safe = (before
-                .replace('%', r'\%')
-                .replace('&', r'\&')
-                .replace('#', r'\#')
-                .replace(' ', '~')
-            )
-            parts.append(r'\text{' + safe + '}')
-        parts.append(m.group(1))
-        last = m.end()
-    after = text[last:]
-    if after:
-        safe = (after
-            .replace('%', r'\%')
-            .replace('&', r'\&')
-            .replace('#', r'\#')
-            .replace(' ', '~')
-        )
-        parts.append(r'\text{' + safe + '}')
-    return ' '.join(parts)
+# Preâmbulo idêntico ao TeXit: fundo escuro (#36393f = cor do Discord),
+# texto branco, fonte maior para legibilidade
+LATEX_PREAMBLE = (
+    r"\usepackage{amsmath}"
+    r"\usepackage{amssymb}"
+    r"\usepackage{amsfonts}"
+    r"\usepackage{xcolor}"
+    r"\color{white}"
+)
 
 
-async def quicklatex_render(formula: str) -> bytes | None:
-    """POST para QuickLaTeX com bgcolor branco, baixa e retorna PNG."""
+async def quicklatex_render(formula: str, display: bool = True) -> bytes | None:
+    """
+    Renderiza LaTeX via QuickLaTeX e retorna PNG como bytes.
+
+    display=True  → ambiente \[ ... \]  (bloco centralizado, maior)
+    display=False → ambiente $ ... $    (inline, menor)
+    """
+    if display:
+        wrapped = r"\[ " + formula + r" \]"
+    else:
+        wrapped = r"$ " + formula + r" $"
+
     payload = {
-        "formula": formula,
-        "fsize": "17px",
-        "out": "1",
-        "preamble": "\\usepackage{amsmath}\\usepackage{amssymb}\\usepackage{amsfonts}",
-        "bgcolor": "white",
-        "fgcolor": "000000",
+        "formula":  wrapped,
+        "fsize":    "20px",
+        "fcolor":   "FFFFFF",           # texto branco — igual ao TeXit
+        "mode":     "0",
+        "out":      "1",
+        "remhost":  "quicklatex.com",
+        "preamble": LATEX_PREAMBLE,
+        "bgcolor":  "2b2d31",           # fundo escuro padrão Discord
+        "errors":   "1",
     }
+
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 QUICKLATEX_URL, data=payload,
-                timeout=aiohttp.ClientTimeout(total=10)
+                timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 raw = await resp.text()
 
-            log.info(f"[LaTeX] resposta: {repr(raw[:120])}")
+            log.info(f"[LaTeX] QuickLaTeX resposta: {repr(raw[:200])}")
             lines = raw.strip().splitlines()
+
             if not lines or lines[0].strip() != "0":
-                log.warning(f"[LaTeX] erro QuickLaTeX: {raw[:200]}")
+                log.warning(f"[LaTeX] Erro da API:\n{raw[:500]}")
                 return None
 
             img_url = lines[1].split()[0]
             if not img_url.startswith("http"):
+                log.warning(f"[LaTeX] URL inválida: {img_url}")
                 return None
 
-            async with session.get(img_url, timeout=aiohttp.ClientTimeout(total=10)) as img:
-                return await img.read()
+            async with session.get(
+                img_url, timeout=aiohttp.ClientTimeout(total=15)
+            ) as img_resp:
+                return await img_resp.read()
 
     except Exception as e:
-        log.warning(f"[LaTeX] exceção: {e}")
+        log.warning(f"[LaTeX] Exceção: {e}")
         return None
 
 
 class LatexView(View):
+    """Botão "Copiar fórmula" — igual ao TeXit."""
+
     def __init__(self, formula: str):
         super().__init__(timeout=120)
         self.formula = formula
 
     @discord.ui.button(label="📋 Copiar fórmula", style=discord.ButtonStyle.secondary)
-    async def copy_formula(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def copy_formula(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         await interaction.response.send_message(
             f"```latex\n{self.formula}\n```", ephemeral=True
         )
 
 
-async def send_latex(message: discord.Message, formula: str, original: str = "") -> None:
-    png = await quicklatex_render(formula)
+async def send_latex(
+    message: discord.Message,
+    formula: str,
+    original: str = "",
+    display: bool = True,
+) -> None:
+    """Renderiza e envia a imagem LaTeX como reply."""
+    png = await quicklatex_render(formula, display=display)
     if not png:
+        # Falha silenciosa — não spamma o canal com erros
+        log.warning("[LaTeX] PNG não gerado, ignorando mensagem.")
         return
-    file = discord.File(io.BytesIO(png), filename="formula.png")
-    embed = discord.Embed(color=0xFFFFFF)
+
+    file  = discord.File(io.BytesIO(png), filename="formula.png")
+    # Embed sem cor de borda (transparente) — igual ao TeXit
+    embed = discord.Embed(color=0x2B2D31)
     embed.set_image(url="attachment://formula.png")
+
     try:
         await message.reply(
-            embed=embed, file=file,
+            embed=embed,
+            file=file,
             view=LatexView(original or formula),
             mention_author=False,
         )
     except discord.HTTPException as e:
-        log.warning(f"[LaTeX] erro ao enviar: {e}")
+        log.warning(f"[LaTeX] Erro ao enviar mensagem: {e}")
 
 
 @bot.event
@@ -400,20 +416,34 @@ async def on_message(message: discord.Message):
 
     text = message.content
 
-    # Bloco display $$ ... $$
+    # ── 1. Bloco display  $$ ... $$ ──────────────────────────────────────────
     block = LATEX_PATTERN_BLOCK.search(text)
     if block:
         formula = block.group(1).strip()
-        await send_latex(message, formula, original=formula)
+        await send_latex(message, formula, original=formula, display=True)
         return
 
-    # Inline — monta parágrafo completo com texto + fórmulas
-    if not LATEX_PATTERN_INLINE.search(text):
+    # ── 2. Inline  $ ... $ ───────────────────────────────────────────────────
+    # Só age se houver pelo menos um par válido de $...$
+    matches = LATEX_PATTERN_INLINE.findall(text)
+    if not matches:
         return
 
-    latex = build_inline_latex(text)
-    await send_latex(message, latex, original=text)
+    # Se a mensagem inteira é uma única fórmula inline, renderiza em display
+    # para ficar maior e mais legível (comportamento do TeXit)
+    stripped = text.strip()
+    single_inline = re.fullmatch(r'\$(.+?)\$', stripped, re.DOTALL)
+    if single_inline:
+        formula = single_inline.group(1).strip()
+        await send_latex(message, formula, original=formula, display=True)
+        return
 
+    # Mensagem mista (texto + fórmulas): renderiza cada fórmula separadamente
+    # Limita a 4 renders por mensagem para evitar spam/abuso
+    for formula in matches[:4]:
+        formula = formula.strip()
+        if formula:
+            await send_latex(message, formula, original=formula, display=False)
 
 # ==================================================
 # ---------------- STATUS ROTATIVO ----------------
@@ -421,9 +451,9 @@ async def on_message(message: discord.Message):
 
 _STATUS_LIST = [
     ("Aprendendo matemática 🩵", discord.ActivityType.watching),
-    ("Olimpíadas ⚡", discord.ActivityType.watching),
-    ("OBMEP 🏆", discord.ActivityType.watching),
-    ("Filosofia 🏮", discord.ActivityType.watching),
+    ("Olimpíadas ⚡",            discord.ActivityType.watching),
+    ("OBMEP 🏆",                 discord.ActivityType.watching),
+    ("Filosofia 🏮",             discord.ActivityType.watching),
 ]
 
 _cycle_status = itertools.cycle(_STATUS_LIST)
@@ -432,15 +462,13 @@ _cycle_status = itertools.cycle(_STATUS_LIST)
 @tasks.loop(seconds=30)
 async def rotate_status():
     name, activity_type = next(_cycle_status)
-    await bot.change_presence(activity=discord.Activity(type=activity_type, name=name))
+    await bot.change_presence(
+        activity=discord.Activity(type=activity_type, name=name)
+    )
 
 
 @rotate_status.before_loop
 async def before_rotate():
     await bot.wait_until_ready()
 
-# ==================================================
-# -------------------- RUN ------------------------
-# ==================================================
-
-bot.run(TOKEN)
+# ==
