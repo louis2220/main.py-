@@ -416,7 +416,7 @@ async def render_latex(formula: str) -> str | None:
       Erro    → "ERR\n<mensagem de erro>\n"
     """
     # Monta o payload sem indentação extra — espaços extras causam erros de parse
-    payload = f"\\dpi{{300}} \\bg_black \\color{{white}} {formula}"
+    payload = "\\dpi{300} \\bg_black \\color{white} " + formula
 
     try:
         async with aiohttp.ClientSession() as session:
