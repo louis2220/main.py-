@@ -134,45 +134,45 @@ async def clear(interaction: discord.Interaction, quantidade: int):
 # 🧠 FILOSOFIA + IA
 # ==================================================
 
-from openai import OpenAI
+import os
+import discord
+import openai
 
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-client_ai = OpenAI(api_key=OPENAI_KEY)
+# Pega a chave da variável de ambiente
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# Função para gerar resposta usando IA
+async def gerar_resposta(pergunta):
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # Pode trocar para outro modelo se quiser
+            messages=[{"role": "user", "content": pergunta}],
+            max_tokens=300
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Erro IA: {e}")
+        return None
+
+# Comando filosofia (busca + resumo IA)
 @bot.tree.command(name="filosofia", description="Pesquisar termo na Stanford Encyclopedia + resumo IA")
 async def filosofia(interaction: discord.Interaction, termo: str):
-
     await interaction.response.defer()
 
+    # Link direto de busca na SEP
     search_url = f"https://plato.stanford.edu/search/searcher.py?query={termo.replace(' ', '+')}"
 
-    try:
-        resposta = client_ai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Você é um assistente especializado em filosofia e teologia. Explique de forma clara e acadêmica."
-                },
-                {
-                    "role": "user",
-                    "content": f"Explique o conceito filosófico de: {termo}"
-                }
-            ],
-            max_tokens=500
-        )
-
-        resumo = resposta.choices[0].message.content
-
-    except Exception as e:
+    # Gera resumo com a IA
+    resumo = await gerar_resposta(f"Explique o conceito filosófico de: {termo}")
+    if not resumo:
         resumo = "❌ Erro ao gerar resposta da IA."
 
+    # Cria embed
     embed = discord.Embed(
         title="📚 Filosofia & Teologia",
         description=f"**Tema:** {termo}",
         color=0x2b2d31
     )
-
     embed.add_field(name="🧠 Explicação IA", value=resumo[:1024], inline=False)
     embed.add_field(name="🔎 Stanford Encyclopedia", value=f"[Pesquisar artigo]({search_url})", inline=False)
     embed.set_footer(text="Fonte acadêmica + IA")
@@ -180,32 +180,13 @@ async def filosofia(interaction: discord.Interaction, termo: str):
     await interaction.followup.send(embed=embed)
 
 
-# ------------------ PERGUNTAS LIVRES ------------------
-
+# Comando pergunta livre
 @bot.tree.command(name="pergunta", description="Fazer pergunta filosófica ou teológica")
 async def pergunta(interaction: discord.Interaction, pergunta: str):
-
     await interaction.response.defer()
 
-    try:
-        resposta = client_ai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Você é um especialista em filosofia e teologia. Responda de forma clara, acadêmica e respeitosa."
-                },
-                {
-                    "role": "user",
-                    "content": pergunta
-                }
-            ],
-            max_tokens=600
-        )
-
-        texto = resposta.choices[0].message.content
-
-    except Exception as e:
+    texto = await gerar_resposta(pergunta)
+    if not texto:
         texto = "❌ Erro ao consultar IA."
 
     embed = discord.Embed(
@@ -213,8 +194,8 @@ async def pergunta(interaction: discord.Interaction, pergunta: str):
         description=texto[:4096],
         color=0x5865F2
     )
-
     await interaction.followup.send(embed=embed)
-# -------------------------------------------------------
+
+# ---------------------------------------------------
 
 bot.run(TOKEN)
