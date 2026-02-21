@@ -297,10 +297,7 @@ LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
 
 
 def build_inline_latex(text: str) -> str:
-    """
-    Converte mensagem em LaTeX completo:
-    texto normal → \text{...}, fórmulas $...$ ficam inline.
-    """
+    """Texto normal → \\text{...}, fórmulas $...$ ficam inline."""
     parts = []
     last = 0
     for m in LATEX_PATTERN_INLINE.finditer(text):
@@ -317,20 +314,13 @@ def build_inline_latex(text: str) -> str:
     return ' '.join(parts)
 
 
-def mathvercel_url(formula: str, display: bool = False) -> str:
+def latex_url(formula: str) -> str:
     """
-    Usa math.vercel.app (MathJax) — suporta \text{} com texto real.
-    Retorna SVG diretamente, sem POST, sem parsing.
+    CodeCogs SVG: fundo transparente, suporta \\text{} nativamente.
+    \\color{white} = texto branco para tema escuro do Discord.
     """
     from urllib.parse import quote
-    mode = "display" if display else "inline"
-    return (
-        f"https://math.vercel.app/"
-        f"?from={quote(formula)}"
-        f"&color=white"
-        f"&fontSize=20"
-        f"&mode={mode}"
-    )
+    return "https://latex.codecogs.com/svg.latex?" + quote(r"\color{white}" + formula)
 
 
 class LatexView(View):
@@ -345,8 +335,9 @@ class LatexView(View):
         )
 
 
-async def send_latex(message: discord.Message, formula: str, display: bool = False) -> None:
-    url = mathvercel_url(formula, display=display)
+async def send_latex(message: discord.Message, formula: str) -> None:
+    url = latex_url(formula)
+    log.info(f"[LaTeX] URL: {url[:120]}")
     embed = discord.Embed(color=0x2B2D31)
     embed.set_image(url=url)
     try:
@@ -362,18 +353,21 @@ async def on_message(message: discord.Message):
 
     text = message.content
 
-    # Bloco display $$ ... $$ — modo display, centralizado
+    # Bloco display $$ ... $$ (incluindo multilinhas)
     block = LATEX_PATTERN_BLOCK.search(text)
     if block:
-        await send_latex(message, block.group(1).strip(), display=True)
+        formula = block.group(1).strip()
+        log.info(f"[LaTeX] Bloco display detectado")
+        await send_latex(message, formula)
         return
 
-    # Inline $...$ — monta parágrafo completo com texto e fórmulas
+    # Inline $...$ — monta parágrafo completo numa imagem
     if not LATEX_PATTERN_INLINE.search(text):
         return
 
     latex = build_inline_latex(text)
-    await send_latex(message, latex, display=False)
+    log.info(f"[LaTeX] Inline detectado")
+    await send_latex(message, latex)
 
 
 # ==================================================
