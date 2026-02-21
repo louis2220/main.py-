@@ -164,7 +164,7 @@ async def filosofia(interaction: discord.Interaction, termo: str):
     )
 
     embed.add_field(
-        name="<a:22875nitro:1430339226129404004> Google Scholar",
+        name="<a:1503hearts:1430339028720549908> Google Scholar",
         value=f"[Pesquisar artigos acadêmicos]({scholar_url})",
         inline=False
     )
