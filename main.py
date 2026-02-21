@@ -165,6 +165,7 @@ async def filosofia(interaction: discord.Interaction, termo: str):
     encoded = quote_plus(exact)
     normal = quote_plus(termo)
 
+    # links
     sep_url = f"https://plato.stanford.edu/search/searcher.py?query={normal}"
     scholar_url = f"https://scholar.google.com/scholar?q={encoded}"
     springer_url = f"https://link.springer.com/search?query={normal}"
@@ -175,17 +176,46 @@ async def filosofia(interaction: discord.Interaction, termo: str):
     titulo = termo.title()
 
     embed = discord.Embed(
-        title="Resultado de artigos encontrados",
+        title="<a:9582dsicordveriyblack:1430269158024810598> Resultado de artigos encontrados",
         description=f"**Busca:** {termo}",
         color=0x2b2d31
     )
 
-    embed.add_field(name="Stanford Encyclopedia", value=f"[SEP]({sep_url})", inline=False)
-    embed.add_field(name="Scholar", value=f"[Google Scholar]({scholar_url})", inline=False)
-    embed.add_field(name="PhilPapers", value=f"[PhilPapers]({philpapers_url})", inline=False)
-    embed.add_field(name="Springer", value=f"[Springer]({springer_url})", inline=False)
-    embed.add_field(name="Library", value=f"[Anna's Archive]({annas_url})", inline=False)
-    embed.add_field(name="Archive", value=f"[Archive.org]({archive_url})", inline=False)
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> Stanford Encyclopedia",
+        value=f"[{titulo} — SEP]({sep_url})",
+        inline=False
+    )
+
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> Scholar",
+        value=f"[{titulo} — Academic paper]({scholar_url})",
+        inline=False
+    )
+
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> PhilPapers",
+        value=f"[{titulo} — PhilPapers entry]({philpapers_url})",
+        inline=False
+    )
+
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> Springer",
+        value=f"[{titulo} — Journal article]({springer_url})",
+        inline=False
+    )
+
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> Library",
+        value=f"[{titulo} — Book sources]({annas_url})",
+        inline=False
+    )
+
+    embed.add_field(
+        name="<a:51047animatedarrowwhite:1430338988765347850> Archive",
+        value=f"[{titulo} — Digital archive]({archive_url})",
+        inline=False
+    )
 
     await interaction.followup.send(embed=embed)
 
