@@ -182,7 +182,7 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ------------------- RUN ------------------------
 # ==================================================
 
-# ==================== COMANDO LATEX (ESTILO TEXIT) ====================
+# ==================== COMANDO LATEX (FIX DISCORD URL) ====================
 
 @bot.tree.command(name="latex", description="Renderiza fórmulas em LaTeX")
 async def latex(interaction: discord.Interaction, formula: str):
@@ -191,30 +191,17 @@ async def latex(interaction: discord.Interaction, formula: str):
     try:
         from urllib.parse import quote_plus
 
-        # Melhor encoding (suporta espaços e símbolos melhor)
-        encoded = quote_plus(formula)
+        # adiciona dpi dentro da fórmula antes do encode
+        latex = f"\\dpi{{300}} {formula}"
 
-        # SVG = qualidade alta igual Texit
-        image_url = f"https://latex.codecogs.com/svg.image?\\dpi{{300}} {encoded}"
+        encoded = quote_plus(latex)
 
-        embed = discord.Embed(
-            color=0x2B2D31  # cor dark igual bots modernos
-        )
+        image_url = f"https://latex.codecogs.com/png.image?{encoded}"
 
+        embed = discord.Embed(color=0x2B2D31)
         embed.set_image(url=image_url)
 
-        # pequeno crédito discreto
-        embed.set_footer(text=f"{interaction.user.display_name} • LaTeX Renderer")
-
         await interaction.followup.send(embed=embed)
-
-        # ---------- LOG ----------
-        if bot.log_channel_id:
-            log_channel = bot.get_channel(bot.log_channel_id)
-            if log_channel:
-                await log_channel.send(
-                    f"🧮 {interaction.user.mention} gerou: `{formula}`"
-                )
 
     except Exception as e:
         await interaction.followup.send(f"❌ Erro ao renderizar: {e}")
