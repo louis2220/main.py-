@@ -6,6 +6,10 @@ import re
 from datetime import timedelta
 from urllib.parse import quote_plus
 
+import io
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import aiohttp
 import discord
 from discord import app_commands
@@ -296,7 +300,7 @@ LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([\s\S]+?)\$\$')
 LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
 
 
-def build_inline_latex(text: str) -> str:
+def build_latex_formula(text: str) -> str:
     """Texto normal → \\text{...}, fórmulas $...$ ficam inline."""
     parts = []
     last = 0
@@ -314,13 +318,43 @@ def build_inline_latex(text: str) -> str:
     return ' '.join(parts)
 
 
-def latex_url(formula: str) -> str:
+def render_latex_png(formula: str, fontsize: int = 14) -> bytes:
     """
-    CodeCogs SVG: fundo transparente, suporta \\text{} nativamente.
-    \\color{white} = texto branco para tema escuro do Discord.
+    Renderiza LaTeX localmente com matplotlib.
+    Retorna bytes PNG com fundo transparente e texto branco.
     """
-    from urllib.parse import quote
-    return "https://latex.codecogs.com/svg.latex?" + quote(r"\color{white}" + formula)
+    fig = plt.figure(figsize=(0.01, 0.01))
+    fig.patch.set_alpha(0)
+
+    text_obj = fig.text(
+        0, 0, f"${formula}$",
+        fontsize=fontsize,
+        color='white',
+        ha='left', va='bottom',
+        usetex=False,  # usa mathtext do matplotlib, sem precisar de LaTeX instalado
+    )
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    bbox = text_obj.get_window_extent(renderer=renderer)
+
+    pad = 12
+    dpi = fig.dpi
+    w = (bbox.width + pad * 2) / dpi
+    h = (bbox.height + pad * 2) / dpi
+    fig.set_size_inches(max(w, 0.5), max(h, 0.3))
+    text_obj.set_position((
+        pad / (bbox.width + pad * 2),
+        pad / (bbox.height + pad * 2),
+    ))
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=dpi,
+                facecolor='none', edgecolor='none',
+                bbox_inches='tight', pad_inches=0.08)
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
 
 
 class LatexView(View):
@@ -335,15 +369,29 @@ class LatexView(View):
         )
 
 
-async def send_latex(message: discord.Message, formula: str) -> None:
-    url = latex_url(formula)
-    log.info(f"[LaTeX] URL: {url[:120]}")
-    embed = discord.Embed(color=0x2B2D31)
-    embed.set_image(url=url)
+async def send_latex(message: discord.Message, formula: str, original: str = "") -> None:
+    """Renderiza localmente e envia como arquivo PNG."""
     try:
-        await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
+        png_bytes = await asyncio.get_event_loop().run_in_executor(
+            None, render_latex_png, formula
+        )
+    except Exception as e:
+        log.warning(f"[LaTeX] Erro ao renderizar: {e}")
+        return
+
+    file = discord.File(io.BytesIO(png_bytes), filename="formula.png")
+    embed = discord.Embed(color=0x2B2D31)
+    embed.set_image(url="attachment://formula.png")
+
+    try:
+        await message.reply(
+            embed=embed,
+            file=file,
+            view=LatexView(original or formula),
+            mention_author=False,
+        )
     except discord.HTTPException as e:
-        log.warning(f"[LaTeX] Erro: {e}")
+        log.warning(f"[LaTeX] Erro ao enviar: {e}")
 
 
 @bot.event
@@ -353,21 +401,21 @@ async def on_message(message: discord.Message):
 
     text = message.content
 
-    # Bloco display $$ ... $$ (incluindo multilinhas)
+    # Bloco display $$ ... $$
     block = LATEX_PATTERN_BLOCK.search(text)
     if block:
         formula = block.group(1).strip()
-        log.info(f"[LaTeX] Bloco display detectado")
-        await send_latex(message, formula)
+        log.info(f"[LaTeX] Bloco display")
+        await send_latex(message, formula, original=formula)
         return
 
-    # Inline $...$ — monta parágrafo completo numa imagem
+    # Inline $...$ — monta parágrafo completo
     if not LATEX_PATTERN_INLINE.search(text):
         return
 
-    latex = build_inline_latex(text)
-    log.info(f"[LaTeX] Inline detectado")
-    await send_latex(message, latex)
+    latex = build_latex_formula(text)
+    log.info(f"[LaTeX] Inline")
+    await send_latex(message, latex, original=text)
 
 
 # ==================================================
