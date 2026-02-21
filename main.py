@@ -181,4 +181,71 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ==================================================
 # ------------------- RUN ------------------------
 # ==================================================
+
+# ==================================================
+# 📝 LOGS + RENDERIZADOR DE FÓRMULAS (LaTeX)
+# ==================================================
+
+import io
+import matplotlib.pyplot as plt
+import discord
+from datetime import datetime, timedelta
+
+# ==================== COMANDO LATEX ====================
+
+@bot.tree.command(name="latex", description="Renderiza fórmulas em LaTeX")
+async def latex(interaction: discord.Interaction, formula: str):
+    await interaction.response.defer()
+
+    try:
+        # Configura a imagem do matplotlib
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, f"${formula}$", fontsize=20, ha='center', va='center')
+        ax.axis('off')
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
+        buf.seek(0)
+        plt.close(fig)
+
+        file = discord.File(fp=buf, filename="formula.png")
+        await interaction.followup.send(file=file)
+
+        # ---------- LOGS ----------
+        if bot.log_channel_id:
+            log_channel = bot.get_channel(bot.log_channel_id)
+            await log_channel.send(
+                f"<a:8111discordverifypurple:1430269168908894369> {interaction.user.mention} gerou a fórmula: `{formula}`"
+            )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Erro ao renderizar a fórmula: {e}")
+        if bot.log_channel_id:
+            log_channel = bot.get_channel(bot.log_channel_id)
+            await log_channel.send(
+                f"❌ Erro ao gerar fórmula do usuário {interaction.user.mention}: {e}"
+            )
+
+# ==================== LOGS DE MODERAÇÃO ====================
+
+# Função auxiliar para enviar logs
+async def enviar_log(acao: str, membro: discord.Member, autor: discord.Member, motivo: str = None):
+    if bot.log_channel_id:
+        log_channel = bot.get_channel(bot.log_channel_id)
+        msg = f"<a:1812purple:1430339025520164974> **Ação:** {acao}\n" \
+              f"**Membro:** {membro.mention}\n" \
+              f"**Por:** {autor.mention}"
+        if motivo:
+            msg += f"\n**Motivo:** {motivo}"
+        await log_channel.send(msg)
+
+# Exemplo de uso nos comandos de moderação:
+# await enviar_log("Ban", membro, interaction.user, motivo)
+# await enviar_log("Kick", membro, interaction.user, motivo)
+# await enviar_log("Mute", membro, interaction.user, f"{minutos} min")
+# await enviar_log("Unmute", membro, interaction.user)
+# await enviar_log("Clear", interaction.user, f"{quantidade} mensagens")
+
+# ---------------------------------------------------
+
 bot.run(TOKEN)
