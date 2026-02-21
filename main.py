@@ -296,11 +296,32 @@ LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([\s\S]+?)\$\$')
 LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
 
 
+def build_inline_latex(text: str) -> str:
+    """
+    Monta o parágrafo inteiro como LaTeX:
+    texto normal → \text{...}, fórmulas $...$ ficam inline.
+    """
+    parts = []
+    last = 0
+    for m in LATEX_PATTERN_INLINE.finditer(text):
+        before = text[last:m.start()]
+        if before:
+            safe = before.replace('%', r'\%').replace('&', r'\&').replace('#', r'\#')
+            parts.append(r'\text{' + safe + '}')
+        parts.append(m.group(1))
+        last = m.end()
+    after = text[last:]
+    if after:
+        safe = after.replace('%', r'\%').replace('&', r'\&').replace('#', r'\#')
+        parts.append(r'\text{' + safe + '}')
+    return ' '.join(parts)
+
+
 def codecogs_url(formula: str) -> str:
-    """Gera URL PNG CodeCogs: fundo transparente, texto branco, DPI 150."""
+    """Gera URL PNG CodeCogs: fundo transparente, texto branco, DPI 130."""
     from urllib.parse import quote
     phantom = "\\phantom{Xx}"
-    params = "\\dpi{150}\\color{white} " + phantom + formula + phantom
+    params = "\\dpi{130}\\color{white} " + phantom + formula + phantom
     return "https://latex.codecogs.com/png.latex?" + quote(params)
 
 
@@ -317,14 +338,13 @@ class LatexView(View):
 
 
 async def send_latex(message: discord.Message, formula: str) -> None:
-    """Envia um embed com a fórmula renderizada."""
     url = codecogs_url(formula)
     embed = discord.Embed(color=0x2B2D31)
     embed.set_image(url=url)
     try:
         await message.reply(embed=embed, view=LatexView(formula), mention_author=False)
     except discord.HTTPException as e:
-        log.warning(f"[LaTeX] Erro ao enviar embed: {e}")
+        log.warning(f"[LaTeX] Erro: {e}")
 
 
 @bot.event
@@ -334,21 +354,18 @@ async def on_message(message: discord.Message):
 
     text = message.content
 
-    # Bloco display $$ ... $$ — sempre uma imagem isolada
+    # Bloco display $$ ... $$ — fórmula isolada
     block = LATEX_PATTERN_BLOCK.search(text)
     if block:
         await send_latex(message, block.group(1).strip())
         return
 
-    # Inline $...$ — TODAS as fórmulas em UMA única imagem
-    matches = LATEX_PATTERN_INLINE.findall(text)
-    if not matches:
+    # Inline $...$ — renderiza o parágrafo inteiro (texto + fórmulas) numa imagem
+    if not LATEX_PATTERN_INLINE.search(text):
         return
 
-    # Junta todas as fórmulas separadas por \quad — uma imagem só, sem picotar
-    combined = r" \quad ".join(m.strip() for m in matches if m.strip())
-    if combined:
-        await send_latex(message, combined)
+    latex = build_inline_latex(text)
+    await send_latex(message, latex)
 
 
 # ==================================================
