@@ -183,13 +183,11 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ==================================================
 
 # ==================================================
-# 📝 LOGS + RENDERIZADOR DE FÓRMULAS (LaTeX)
+# 📝 LOGS + RENDERIZADOR DE FÓRMULAS (LaTeX via Codecogs)
 # ==================================================
 
-import io
-import matplotlib.pyplot as plt
 import discord
-from datetime import datetime, timedelta
+from urllib.parse import quote
 
 # ==================== COMANDO LATEX ====================
 
@@ -198,18 +196,19 @@ async def latex(interaction: discord.Interaction, formula: str):
     await interaction.response.defer()
 
     try:
-        # Configura a imagem do matplotlib
-        fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, f"${formula}$", fontsize=20, ha='center', va='center')
-        ax.axis('off')
+        # Gera URL da imagem no Codecogs
+        encoded_formula = quote(formula)
+        image_url = f"https://latex.codecogs.com/png.latex?{encoded_formula}"
 
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
-        buf.seek(0)
-        plt.close(fig)
+        embed = discord.Embed(
+            title="🧮 Fórmula LaTeX",
+            description=f"Fórmula gerada para `{formula}`",
+            color=0x5865F2
+        )
+        embed.set_image(url=image_url)
+        embed.set_footer(text="Renderizado via Codecogs LaTeX")
 
-        file = discord.File(fp=buf, filename="formula.png")
-        await interaction.followup.send(file=file)
+        await interaction.followup.send(embed=embed)
 
         # ---------- LOGS ----------
         if bot.log_channel_id:
@@ -225,6 +224,7 @@ async def latex(interaction: discord.Interaction, formula: str):
             await log_channel.send(
                 f"❌ Erro ao gerar fórmula do usuário {interaction.user.mention}: {e}"
             )
+
 
 # ==================== LOGS DE MODERAÇÃO ====================
 
@@ -246,6 +246,6 @@ async def enviar_log(acao: str, membro: discord.Member, autor: discord.Member, m
 # await enviar_log("Unmute", membro, interaction.user)
 # await enviar_log("Clear", interaction.user, f"{quantidade} mensagens")
 
-# ---------------------------------------------------
+# ------------------------------------------------------------
 
 bot.run(TOKEN)
