@@ -23,8 +23,12 @@ class ModBot(discord.Client):
         self.log_channel_id = None
 
     async def setup_hook(self):
-        await self.tree.sync()
+    GUILD_ID = 1163654753008484453
 
+    guild = discord.Object(id=GUILD_ID)
+    self.tree.copy_global_to(guild=guild)
+    await self.tree.sync(guild=guild)
+    
 bot = ModBot()
 
 @bot.event
