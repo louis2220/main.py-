@@ -293,67 +293,29 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ==================================================
 
 LATEX_PATTERN = re.compile(r"\${1,2}([\s\S]+?)\${1,2}")
-QUICKLATEX_URL = "https://quicklatex.com/latex3.f"
+
+
+def codecogs_url(formula: str) -> str:
+    """
+    Gera URL do CodeCogs para renderizar LaTeX como PNG.
+    - Fundo branco, texto preto, DPI 150 — legível em qualquer tema
+    - GET puro: sem POST, sem parsing, sem chance de corromper a fórmula
+    """
+    from urllib.parse import quote
+    prefix = "\\dpi{150}\\bg{white}\\fg{black} "
+    return "https://latex.codecogs.com/png.latex?" + quote(prefix + formula)
 
 
 async def render_latex(formula: str) -> str | None:
-    """
-    Envia a fórmula para o QuickLaTeX e retorna a URL da imagem.
-
-    Formato real da resposta:
-      Sucesso → "0\n<url> <largura> <altura>"
-      Erro    → "<código != 0>\n<mensagem>"
-
-    Usa fundo branco + texto preto para máxima legibilidade (estilo TeXiT).
-    """
-    # Fórmula enviada limpa — sem prefixos inline que viram texto LaTeX
-    # background e foreground são controlados via CSS/hex na própria fórmula
-    # transparente = sem bgcolor, texto preto padrão do LaTeX
+    """Valida a fórmula gerando a URL e retorna. Sem requisição necessária."""
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                QUICKLATEX_URL,
-                data={
-                    "formula": formula,
-                    "fsize": "20px",
-                    "out": "1",
-                    "mode": "0",
-                    "preamble": "\\usepackage{amsmath}\\usepackage{amssymb}\\usepackage{amsfonts}",
-                },
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                text = await resp.text()
-
-        log.info(f"[LaTeX] Resposta bruta: {repr(text[:200])}")
-
-        lines = text.strip().splitlines()
-        if not lines:
-            log.warning("[LaTeX] Resposta vazia do QuickLaTeX.")
-            return None
-
-        status = lines[0].strip()
-        if status != "0":
-            log.warning(f"[LaTeX] Erro do QuickLaTeX (status={status}): {text[:300]}")
-            return None
-
-        if len(lines) < 2:
-            log.warning("[LaTeX] Resposta sem URL.")
-            return None
-
-        url = lines[1].split()[0]
-        if not url.startswith("http"):
-            log.warning(f"[LaTeX] URL inválida: {url}")
-            return None
-
-        log.info(f"[LaTeX] URL extraída: {url}")
+        url = codecogs_url(formula)
+        log.info(f"[LaTeX] URL gerada: {url}")
         return url
+    except Exception as e:
+        log.warning(f"[LaTeX] Erro ao gerar URL: {e}")
+        return None
 
-    except asyncio.TimeoutError:
-        log.warning("[LaTeX] Timeout ao contatar QuickLaTeX.")
-        return None
-    except aiohttp.ClientError as e:
-        log.warning(f"[LaTeX] Erro de rede: {e}")
-        return None
 
 
 class LatexView(View):
@@ -433,4 +395,4 @@ async def before_rotate():
 # -------------------- RUN ------------------------
 # ==================================================
 
-bot.run(TOKEN)        
+bot.run(TOKEN)
