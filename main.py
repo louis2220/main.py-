@@ -182,29 +182,78 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ------------------- RUN ------------------------
 # ==================================================
 
-# ==================== COMANDO LATEX (FIX DISCORD URL) ====================
+from urllib.parse import quote_plus
+import discord
+from discord.ui import View, Button
+
+
+# ========= BOTÕES =========
+
+class LatexView(View):
+    def __init__(self, formula):
+        super().__init__(timeout=None)
+        self.formula = formula
+
+        copy_btn = Button(label="Copiar fórmula", style=discord.ButtonStyle.gray)
+        copy_btn.callback = self.copy_formula
+
+        dark_btn = Button(label="Modo claro", style=discord.ButtonStyle.blurple)
+        dark_btn.callback = self.light_mode
+
+        self.add_item(copy_btn)
+        self.add_item(dark_btn)
+
+    async def copy_formula(self, interaction: discord.Interaction):
+        await interaction.response.send_message(f"`{self.formula}`", ephemeral=True)
+
+    async def light_mode(self, interaction: discord.Interaction):
+        latex = f"\\dpi{{300}}\\color{{black}}{{{self.formula}}}"
+        url = f"https://latex.codecogs.com/png.image?{quote_plus(latex)}"
+
+        embed = discord.Embed(color=0xFFFFFF)
+        embed.set_image(url=url)
+
+        await interaction.response.edit_message(embed=embed)
+
+
+# ========= COMANDO =========
 
 @bot.tree.command(name="latex", description="Renderiza fórmulas em LaTeX")
 async def latex(interaction: discord.Interaction, formula: str):
     await interaction.response.defer()
 
     try:
-        from urllib.parse import quote_plus
+        # limpa markdown latex
+        formula = formula.strip()
+        if formula.startswith("$$") and formula.endswith("$$"):
+            formula = formula[2:-2]
 
-        # adiciona dpi dentro da fórmula antes do encode
-        latex = f"\\dpi{{300}} {formula}"
+        if formula.startswith("$") and formula.endswith("$"):
+            formula = formula[1:-1]
 
+        formula = formula.strip()
+
+        latex = f"\\dpi{{300}}\\color{{white}}{{{formula}}}"
         encoded = quote_plus(latex)
 
-        image_url = f"https://latex.codecogs.com/png.image?{encoded}"
+        url = f"https://latex.codecogs.com/png.image?{encoded}"
 
         embed = discord.Embed(color=0x2B2D31)
-        embed.set_image(url=image_url)
+        embed.set_image(url=url)
 
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(
+            embed=embed,
+            view=LatexView(formula)
+        )
+
+        # log
+        if getattr(bot, "log_channel_id", None):
+            log = bot.get_channel(bot.log_channel_id)
+            if log:
+                await log.send(f"🧮 {interaction.user.mention} gerou `{formula}`")
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Erro ao renderizar: {e}")
+        await interaction.followup.send(f"❌ Erro: {e}")
 
 # ==================== LOGS DE MODERAÇÃO ====================
 
