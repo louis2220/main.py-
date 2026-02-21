@@ -22,7 +22,7 @@ class ModBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.log_channel_id = None
 
-    async def setup_hook(self):
+async def setup_hook(self):
     ID_DA_GUILDA = 1163654753008484453
 
     guild = discord.Object(id=ID_DA_GUILDA)
