@@ -182,49 +182,42 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ------------------- RUN ------------------------
 # ==================================================
 
-# ==================================================
-# 📝 LOGS + RENDERIZADOR DE FÓRMULAS (LaTeX via Codecogs)
-# ==================================================
-
-import discord
-from urllib.parse import quote
-
-# ==================== COMANDO LATEX ====================
+# ==================== COMANDO LATEX (ESTILO TEXIT) ====================
 
 @bot.tree.command(name="latex", description="Renderiza fórmulas em LaTeX")
 async def latex(interaction: discord.Interaction, formula: str):
     await interaction.response.defer()
 
     try:
-        # Gera URL da imagem no Codecogs
-        encoded_formula = quote(formula)
-        image_url = f"https://latex.codecogs.com/png.latex?{encoded_formula}"
+        from urllib.parse import quote_plus
+
+        # Melhor encoding (suporta espaços e símbolos melhor)
+        encoded = quote_plus(formula)
+
+        # SVG = qualidade alta igual Texit
+        image_url = f"https://latex.codecogs.com/svg.image?\\dpi{{300}} {encoded}"
 
         embed = discord.Embed(
-            title="🧮 Fórmula LaTeX",
-            description=f"Fórmula gerada para `{formula}`",
-            color=0x5865F2
+            color=0x2B2D31  # cor dark igual bots modernos
         )
+
         embed.set_image(url=image_url)
-        embed.set_footer(text="Renderizado via Codecogs LaTeX")
+
+        # pequeno crédito discreto
+        embed.set_footer(text=f"{interaction.user.display_name} • LaTeX Renderer")
 
         await interaction.followup.send(embed=embed)
 
-        # ---------- LOGS ----------
+        # ---------- LOG ----------
         if bot.log_channel_id:
             log_channel = bot.get_channel(bot.log_channel_id)
-            await log_channel.send(
-                f"<a:8111discordverifypurple:1430269168908894369> {interaction.user.mention} gerou a fórmula: `{formula}`"
-            )
+            if log_channel:
+                await log_channel.send(
+                    f"🧮 {interaction.user.mention} gerou: `{formula}`"
+                )
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Erro ao renderizar a fórmula: {e}")
-        if bot.log_channel_id:
-            log_channel = bot.get_channel(bot.log_channel_id)
-            await log_channel.send(
-                f"❌ Erro ao gerar fórmula do usuário {interaction.user.mention}: {e}"
-            )
-
+        await interaction.followup.send(f"❌ Erro ao renderizar: {e}")
 
 # ==================== LOGS DE MODERAÇÃO ====================
 
