@@ -10,6 +10,9 @@ intents.members = True
 intents.guilds = True
 intents.moderation = True
 
+# ==================================================
+# ------------------- BOT -------------------------
+# ==================================================
 class ModBot(discord.Client):
     def __init__(self):
         super().__init__(intents=intents)
@@ -25,14 +28,17 @@ bot = ModBot()
 async def on_ready():
     print(f"✅ Bot online como {bot.user}")
 
-# ------------------ COMANDO PÚBLICO ------------------
+# ==================================================
+# ---------------- COMANDOS PÚBLICOS ----------------
+# ==================================================
 
 @bot.tree.command(name="ping", description="Verifica se o bot está online")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("🏓 Pong!")
 
-# ------------------ SETUP (ADMIN) ------------------
-
+# ==================================================
+# ------------------ SETUP (ADMIN) -----------------
+# ==================================================
 @bot.tree.command(name="setup", description="Define o canal de logs")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
@@ -41,15 +47,16 @@ async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
         f"✅ Canal de logs definido para {canal.mention}"
     )
 
-# ------------------ BAN ------------------
-
+# ==================================================
+# ------------------ BAN --------------------------
+# ==================================================
 @bot.tree.command(name="ban", description="Banir um membro")
 @app_commands.checks.has_permissions(ban_members=True)
 async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo"):
     try:
         await membro.ban(reason=motivo)
         await interaction.response.send_message(
-            f"🔨 {membro.mention} foi banido.\nMotivo: {motivo}"
+            f"<a:1812purple:1430339025520164974> {membro.mention} foi banido.\nMotivo: {motivo}"
         )
     except:
         await interaction.response.send_message(
@@ -57,15 +64,16 @@ async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: 
             ephemeral=True
         )
 
-# ------------------ KICK ------------------
-
+# ==================================================
+# ------------------ KICK -------------------------
+# ==================================================
 @bot.tree.command(name="kick", description="Expulsar um membro")
 @app_commands.checks.has_permissions(kick_members=True)
 async def kick(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo"):
     try:
         await membro.kick(reason=motivo)
         await interaction.response.send_message(
-            f"👢 {membro.mention} foi expulso.\nMotivo: {motivo}"
+            f"<a:22875nitro:1430339226129404004> {membro.mention} foi expulso.\nMotivo: {motivo}"
         )
     except:
         await interaction.response.send_message(
@@ -73,19 +81,18 @@ async def kick(interaction: discord.Interaction, membro: discord.Member, motivo:
             ephemeral=True
         )
 
-# ------------------ MUTE (TIMEOUT) ------------------
-
+# ==================================================
+# ------------------ MUTE (TIMEOUT) ----------------
+# ==================================================
 @bot.tree.command(name="mute", description="Aplicar timeout em um membro")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def mute(interaction: discord.Interaction, membro: discord.Member, minutos: int):
     await interaction.response.defer()
-
     try:
         duração = discord.utils.utcnow() + timedelta(minutes=minutos)
         await membro.timeout(duração)
-
         await interaction.followup.send(
-            f"🔇 {membro.mention} ficou mutado por {minutos} minutos."
+            f"<a:8865gloading:1430269021374119936> {membro.mention} ficou mutado por {minutos} minutos."
         )
     except Exception as e:
         await interaction.followup.send(
@@ -93,17 +100,17 @@ async def mute(interaction: discord.Interaction, membro: discord.Member, minutos
         )
         print(f"Erro no mute: {e}")
 
-# ------------------ UNMUTE ------------------
-
+# ==================================================
+# ------------------ UNMUTE -----------------------
+# ==================================================
 @bot.tree.command(name="unmute", description="Remover timeout de um membro")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def unmute(interaction: discord.Interaction, membro: discord.Member):
     await interaction.response.defer()
-
     try:
         await membro.timeout(None)
         await interaction.followup.send(
-            f"🔊 Timeout removido de {membro.mention}"
+            f"<a:4455lightbluefire:1430338771236294767> Timeout removido de {membro.mention}"
         )
     except Exception as e:
         await interaction.followup.send(
@@ -111,17 +118,17 @@ async def unmute(interaction: discord.Interaction, membro: discord.Member):
         )
         print(f"Erro no unmute: {e}")
 
-# ------------------ CLEAR ------------------
-
+# ==================================================
+# ------------------ CLEAR ------------------------
+# ==================================================
 @bot.tree.command(name="clear", description="Apagar mensagens")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear(interaction: discord.Interaction, quantidade: int):
     await interaction.response.defer(ephemeral=True)
-
     try:
         deleted = await interaction.channel.purge(limit=quantidade)
         await interaction.followup.send(
-            f"🧹 {len(deleted)} mensagens apagadas.",
+            f"<a:32877animatedarrowbluelite:1430339008537428009> {len(deleted)} mensagens apagadas.",
             ephemeral=True
         )
     except:
@@ -131,71 +138,47 @@ async def clear(interaction: discord.Interaction, quantidade: int):
         )
 
 # ==================================================
-# 🧠 FILOSOFIA + IA
+# ---------------- PESQUISA FILOSOFIA ----------------
 # ==================================================
-
-import os
-import discord
-import openai
-
-# Pega a chave da variável de ambiente
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Função para gerar resposta usando IA
-async def gerar_resposta(pergunta):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Pode trocar para outro modelo se quiser
-            messages=[{"role": "user", "content": pergunta}],
-            max_tokens=300
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        print(f"Erro IA: {e}")
-        return None
-
-# Comando filosofia (busca + resumo IA)
-@bot.tree.command(name="filosofia", description="Pesquisar termo na Stanford Encyclopedia + resumo IA")
+@bot.tree.command(
+    name="filosofia",
+    description="Pesquisar termo na Stanford Encyclopedia + Google Scholar/Google"
+)
 async def filosofia(interaction: discord.Interaction, termo: str):
     await interaction.response.defer()
 
-    # Link direto de busca na SEP
-    search_url = f"https://plato.stanford.edu/search/searcher.py?query={termo.replace(' ', '+')}"
+    sep_url = f"https://plato.stanford.edu/search/searcher.py?query={termo.replace(' ', '+')}"
+    scholar_url = f"https://scholar.google.com/scholar?q={termo.replace(' ', '+')}"
+    google_url = f"https://www.google.com/search?q={termo.replace(' ', '+')}"
 
-    # Gera resumo com a IA
-    resumo = await gerar_resposta(f"Explique o conceito filosófico de: {termo}")
-    if not resumo:
-        resumo = "❌ Erro ao gerar resposta da IA."
-
-    # Cria embed
     embed = discord.Embed(
-        title="📚 Filosofia & Teologia",
-        description=f"**Tema:** {termo}",
+        title="<:5508discordstagechannel:1430269231982973069> Pesquisa Filosofia & Teologia",
+        description=f"**Termo pesquisado:** {termo}",
         color=0x2b2d31
     )
-    embed.add_field(name="🧠 Explicação IA", value=resumo[:1024], inline=False)
-    embed.add_field(name="🔎 Stanford Encyclopedia", value=f"[Pesquisar artigo]({search_url})", inline=False)
-    embed.set_footer(text="Fonte acadêmica + IA")
 
-    await interaction.followup.send(embed=embed)
-
-
-# Comando pergunta livre
-@bot.tree.command(name="pergunta", description="Fazer pergunta filosófica ou teológica")
-async def pergunta(interaction: discord.Interaction, pergunta: str):
-    await interaction.response.defer()
-
-    texto = await gerar_resposta(pergunta)
-    if not texto:
-        texto = "❌ Erro ao consultar IA."
-
-    embed = discord.Embed(
-        title="🧠 Resposta Filosófica",
-        description=texto[:4096],
-        color=0x5865F2
+    embed.add_field(
+        name="<a:1812purple:1430339025520164974> Stanford Encyclopedia",
+        value=f"[Pesquisar artigo na SEP]({sep_url})",
+        inline=False
     )
+
+    embed.add_field(
+        name="<a:22875nitro:1430339226129404004> Google Scholar",
+        value=f"[Pesquisar artigos acadêmicos]({scholar_url})",
+        inline=False
+    )
+
+    embed.add_field(
+        name="<a:8865gloading:1430269021374119936> Google",
+        value=f"[Pesquisar no Google]({google_url})",
+        inline=False
+    )
+
+    embed.set_footer(text="Fonte acadêmica + pesquisa online")
     await interaction.followup.send(embed=embed)
 
-# ---------------------------------------------------
-
+# ==================================================
+# ------------------- RUN ------------------------
+# ==================================================
 bot.run(TOKEN)
