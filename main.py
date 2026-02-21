@@ -217,75 +217,104 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 
 # ===================== LATEX VIEW =====================
 
+import re
+import aiohttp
+from discord.ui import View
+from urllib.parse import quote
+
+LATEX_PATTERN = re.compile(r"\$\$(.*?)\$\$|\$(.*?)\$", re.DOTALL)
+
+# ===================== RENDER FUNÇÃO =====================
+
+async def render_latex(formula: str, dark=True):
+    color = "\\color{white}" if dark else "\\color{black}"
+    background = "\\bg_black" if dark else "\\bg_white"
+
+    payload = f"""
+    \\dpi{{300}}
+    {background}
+    {color}
+    {formula}
+    """
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://quicklatex.com/latex3.f",
+            data={
+                "formula": payload,
+                "fsize": "14px",
+                "out": "1",
+                "preamble": "\\usepackage{amsmath}\\usepackage{amssymb}\\usepackage{amsfonts}"
+            }
+        ) as resp:
+            text = await resp.text()
+
+    if "error" in text.lower():
+        return None
+
+    image_url = text.split()[0]
+    return image_url
+
+
+# ===================== VIEW =====================
+
 class LatexView(View):
     def __init__(self, formula):
         super().__init__(timeout=None)
         self.formula = formula
-        self.light = False
+        self.dark = True
 
     @discord.ui.button(label="Copiar fórmula", style=discord.ButtonStyle.gray)
     async def copy_formula(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(f"`{self.formula}`", ephemeral=True)
+        await interaction.response.send_message(f"```latex\n{self.formula}\n```", ephemeral=True)
 
     @discord.ui.button(label="Modo claro", style=discord.ButtonStyle.blurple)
     async def toggle_mode(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.dark = not self.dark
 
-        self.light = not self.light
+        url = await render_latex(self.formula, dark=self.dark)
 
-        if self.light:
-            latex = f"\\dpi{{300}}\\color{{black}}{{{self.formula}}}"
-            embed_color = 0xFFFFFF
-            button.label = "Modo escuro"
-        else:
-            latex = f"\\dpi{{300}}\\color{{white}}{{{self.formula}}}"
-            embed_color = 0x2B2D31
-            button.label = "Modo claro"
-
-        url = f"https://latex.codecogs.com/png.image?{quote_plus(latex)}"
-
-        embed = discord.Embed(color=embed_color)
+        embed = discord.Embed(color=0x2B2D31 if self.dark else 0xFFFFFF)
         embed.set_image(url=url)
+
+        button.label = "Modo escuro" if not self.dark else "Modo claro"
 
         await interaction.response.edit_message(embed=embed, view=self)
 
 
-# ===================== COMANDO LATEX =====================
+# ===================== AUTO DETECT =====================
 
-@bot.tree.command(name="latex", description="Renderiza fórmulas em LaTeX")
-async def latex(interaction: discord.Interaction, formula: str):
-    await interaction.response.defer()
+@bot.event
+async def on_message(message: discord.Message):
 
-    try:
+    if message.author.bot:
+        return
+
+    matches = LATEX_PATTERN.findall(message.content)
+
+    if not matches:
+        return
+
+    for match in matches:
+        formula = match[0] if match[0] else match[1]
         formula = formula.strip()
 
-        if formula.startswith("$$") and formula.endswith("$$"):
-            formula = formula[2:-2]
+        url = await render_latex(formula, dark=True)
 
-        if formula.startswith("$") and formula.endswith("$"):
-            formula = formula[1:-1]
-
-        formula = formula.strip()
-
-        latex = f"\\dpi{{300}}\\color{{white}}{{{formula}}}"
-        url = f"https://latex.codecogs.com/png.image?{quote_plus(latex)}"
+        if not url:
+            continue
 
         embed = discord.Embed(color=0x2B2D31)
         embed.set_image(url=url)
 
-        await interaction.followup.send(
-            embed=embed,
-            view=LatexView(formula)
-        )
+        await message.reply(embed=embed, view=LatexView(formula))
 
-        # logs
         if getattr(bot, "log_channel_id", None):
             log = bot.get_channel(bot.log_channel_id)
             if log:
-                await log.send(f"🧮 {interaction.user.mention} gerou `{formula}`")
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Erro: {e}")
-
+                await log.send(
+                    f"🧮 {message.author.mention} renderizou automaticamente:\n```latex\n{formula}\n```"
+        )
 
 # ===================== STATUS ROTATIVO =====================
 
