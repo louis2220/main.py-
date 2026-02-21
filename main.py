@@ -148,7 +148,7 @@ from urllib.parse import quote_plus
 
 @bot.tree.command(
     name="filosofia",
-    description="Buscar artigos filosóficos por título"
+    description="Buscar artigos acadêmicos por título"
 )
 async def filosofia(interaction: discord.Interaction, termo: str):
     await interaction.response.defer()
@@ -168,7 +168,7 @@ async def filosofia(interaction: discord.Interaction, termo: str):
     titulo = termo.title()
 
     embed = discord.Embed(
-        title="<a:51047animatedarrowwhite:1430338988765347850> Resultado filosófico",
+        title="<a:9582dsicordveriyblack:1430269158024810598> Resultado de artigos encontrados",
         description=f"**Busca:** {termo}",
         color=0x2b2d31
     )
