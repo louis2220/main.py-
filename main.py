@@ -296,33 +296,24 @@ LATEX_PATTERN_BLOCK  = re.compile(r'\$\$([\s\S]+?)\$\$')
 LATEX_PATTERN_INLINE = re.compile(r'\$(.+?)\$')
 
 
-def build_inline_latex(text: str) -> str:
-    """
-    Monta o parágrafo inteiro como LaTeX:
-    texto normal → \text{...}, fórmulas $...$ ficam inline.
-    """
-    parts = []
-    last = 0
-    for m in LATEX_PATTERN_INLINE.finditer(text):
-        before = text[last:m.start()]
-        if before:
-            safe = before.replace('%', r'\%').replace('&', r'\&').replace('#', r'\#')
-            parts.append(r'\text{' + safe + '}')
-        parts.append(m.group(1))
-        last = m.end()
-    after = text[last:]
-    if after:
-        safe = after.replace('%', r'\%').replace('&', r'\&').replace('#', r'\#')
-        parts.append(r'\text{' + safe + '}')
-    return ' '.join(parts)
-
-
 def codecogs_url(formula: str) -> str:
-    """Gera URL PNG CodeCogs: fundo transparente, texto branco, DPI 130."""
+    """Gera URL PNG CodeCogs: fundo transparente, texto branco, DPI 150."""
     from urllib.parse import quote
     phantom = "\\phantom{Xx}"
-    params = "\\dpi{130}\\color{white} " + phantom + formula + phantom
+    params = "\\dpi{150}\\color{white} " + phantom + formula + phantom
     return "https://latex.codecogs.com/png.latex?" + quote(params)
+
+
+def extract_unique_formulas(text: str) -> list[str]:
+    """Extrai fórmulas únicas mantendo ordem de aparição."""
+    seen = set()
+    result = []
+    for m in LATEX_PATTERN_INLINE.findall(text):
+        m = m.strip()
+        if m and m not in seen:
+            seen.add(m)
+            result.append(m)
+    return result
 
 
 class LatexView(View):
@@ -360,12 +351,13 @@ async def on_message(message: discord.Message):
         await send_latex(message, block.group(1).strip())
         return
 
-    # Inline $...$ — renderiza o parágrafo inteiro (texto + fórmulas) numa imagem
-    if not LATEX_PATTERN_INLINE.search(text):
+    # Inline: extrai todas as fórmulas únicas e junta numa imagem só
+    unique = extract_unique_formulas(text)
+    if not unique:
         return
 
-    latex = build_inline_latex(text)
-    await send_latex(message, latex)
+    combined = r",\quad ".join(unique)
+    await send_latex(message, combined)
 
 
 # ==================================================
