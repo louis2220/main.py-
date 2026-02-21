@@ -405,7 +405,7 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ------------------ LATEX ------------------------
 # ==================================================
 
-LATEX_PATTERN = re.compile(r"\${1,2}([\s\S]+?)\${1,2}")
+LATEX_PATTERN = re.compile(r"\${1,2}([\s\S]+?)\${1,2}")  # \$ escapa o cifrão literal
 QUICKLATEX_URL = "https://quicklatex.com/latex3.f"
 
 async def render_latex(formula: str) -> str | None:
@@ -471,16 +471,28 @@ async def on_message(message: discord.Message):
         return
 
     matches = LATEX_PATTERN.findall(message.content)
+    log.info(f"[on_message] {message.author}: {repr(message.content)} → matches={matches}")
+
     if not matches:
         return
 
-    for formula in matches[:3]:  # Limita a 3 fórmulas por mensagem
+    for formula in matches[:3]:
         formula = formula.strip()
         if not formula:
             continue
 
+        log.info(f"[LaTeX] Renderizando: {repr(formula)}")
         url = await render_latex(formula)
+        log.info(f"[LaTeX] URL retornada: {url}")
+
         if not url:
+            try:
+                await message.reply(
+                    "❌ Não foi possível renderizar a fórmula. Verifique a sintaxe LaTeX.",
+                    mention_author=False
+                )
+            except discord.HTTPException:
+                pass
             continue
 
         embed = discord.Embed(color=0x2B2D31)
