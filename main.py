@@ -306,18 +306,18 @@ async def render_latex(formula: str) -> str | None:
 
     Usa fundo branco + texto preto para máxima legibilidade (estilo TeXiT).
     """
-    # \bg_white + sem \color = texto preto no fundo branco, alta legibilidade
-    # \dpi{200} = resolução suficientemente alta sem ficar pesado demais
-    payload = "\\dpi{200} \\bg_white " + formula
-
+    # Fórmula enviada limpa — sem prefixos inline que viram texto LaTeX
+    # background e foreground são controlados via CSS/hex na própria fórmula
+    # transparente = sem bgcolor, texto preto padrão do LaTeX
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 QUICKLATEX_URL,
                 data={
-                    "formula": payload,
-                    "fsize": "17px",
+                    "formula": formula,
+                    "fsize": "20px",
                     "out": "1",
+                    "mode": "0",
                     "preamble": "\\usepackage{amsmath}\\usepackage{amssymb}\\usepackage{amsfonts}",
                 },
                 timeout=aiohttp.ClientTimeout(total=10),
@@ -433,4 +433,4 @@ async def before_rotate():
 # -------------------- RUN ------------------------
 # ==================================================
 
-bot.run(TOKEN)
+bot.run(TOKEN)        
