@@ -4,3 +4,5 @@ requests
 beautifulsoup4
 PyNaCl
 aiohttp
+nixpacks.toml
+matplotlib
