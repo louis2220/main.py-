@@ -1,4 +1,3 @@
-import asyncio
 import itertools
 import logging
 import os
@@ -46,14 +45,43 @@ intents.message_content = True
 # ==================================================
 
 class Colors:
-    PRIMARY   = 0x5865F2  # Blurple Discord
-    SUCCESS   = 0x57F287  # Verde
-    WARNING   = 0xFEE75C  # Amarelo
-    ERROR     = 0xED4245  # Vermelho
-    INFO      = 0xEB459E  # Rosa
-    DARK      = 0x2B2D31  # Fundo escuro Discord
-    ORANGE    = 0xE67E22
-    TEAL      = 0x1ABC9C
+    MAIN = 0x590CEA  # Roxo meia-noite — cor padrão de todas as embeds
+
+# ==================================================
+# ------------------- EMOJIS ----------------------
+# ==================================================
+
+class E:
+    # Setas animadas coloridas
+    ARROW_BLUE   = "<a:32877animatedarrowbluelite:1430339008537428009>"
+    ARROW_ORANGE = "<a:28079animatedarroworange:1430339004452044972>"
+    ARROW_YELLOW = "<a:15770animatedarrowyellow:1430338999716806777>"
+    ARROW_GREEN  = "<a:68523animatedarrowgreen:1430338981958123660>"
+    ARROW_RED    = "<a:73288animatedarrowred:1430339017848787167>"
+
+    # Ícones de interface Discord
+    SEARCH   = "<:5864blurplesearch:1430269243374440478>"
+    DISCORD  = "<:3970discord:1430269042161221834>"
+    VERIFY   = "<a:8111discordverifypurple:1430269168908894369>"
+    ANNOUNCE = "<:9098blurpleannouncements:1430269155063365734>"
+    STAGE    = "<:5508discordstagechannel:1430269231982973069>"
+    RULES    = "<:3149blurplerules:1430269036708761690>"
+    SETTINGS = "<:1520blurplesettings:1430269149384413256>"
+    STAFF    = "<:8968pastelstaff:1430339243854663710>"
+    NITRO    = "<a:22875nitro:1430339226129404004>"
+    LOADING  = "<a:8865gloading:1430269021374119936>"
+    FIRE     = "<a:4455lightbluefire:1430338771236294767>"
+    STAR     = "<a:94798starpur:1430339020646252604>"
+    STAR_P   = "<a:1812purple:1430339025520164974>"
+    FLYNITRO = "<a:44459flyingnitro:1430338788462428210>"
+
+    # Ícones de ação/status
+    INFO_IC  = "<:TCA_info:1446590981821436139>"
+    WARN_IC  = "<a:i_exclamation:1446591025622679644>"
+    PIN      = "<:w_p:1446590947902099556>"
+    ARROW_W  = "<:w_seta:1446590852573958164>"
+    WHITE_IC = "<:AZ_8white:1446590820894507130>"
+    BRANCORE = "<:brancore:1446590909297987761>"
 
 # ==================================================
 # ------------------- BOT -------------------------
@@ -67,7 +95,6 @@ class ModBot(discord.Client):
 
     async def setup_hook(self):
         # Sync global — aparece em TODOS os servidores onde o bot estiver
-        # Primeira propagação pode levar até 1h pelo cache do Discord
         await self.tree.sync()
         log.info("Slash commands sincronizados globalmente.")
 
@@ -82,13 +109,13 @@ class ModBot(discord.Client):
         error: app_commands.AppCommandError,
     ):
         if isinstance(error, app_commands.MissingPermissions):
-            msg = "❌ Você não tem permissão para usar este comando."
+            msg = f"{E.ARROW_RED} Você não tem permissão para usar este comando."
         elif isinstance(error, app_commands.BotMissingPermissions):
-            msg = "❌ Eu não tenho permissões suficientes para executar isso."
+            msg = f"{E.ARROW_RED} Eu não tenho permissões suficientes para executar isso."
         elif isinstance(error, app_commands.CommandOnCooldown):
-            msg = f"⏳ Aguarde {error.retry_after:.1f}s antes de usar este comando novamente."
+            msg = f"{E.LOADING} Aguarde `{error.retry_after:.1f}s` antes de usar este comando novamente."
         else:
-            msg = "❌ Ocorreu um erro ao executar esse comando."
+            msg = f"{E.ARROW_RED} Ocorreu um erro ao executar esse comando."
             log.warning(f"Erro no comando '{interaction.command.name if interaction.command else 'unknown'}': {error}")
 
         try:
@@ -104,7 +131,7 @@ class ModBot(discord.Client):
         *,
         title: str,
         description: str,
-        color: int = Colors.WARNING,
+        color: int = Colors.MAIN,
         fields: list[tuple[str, str, bool]] | None = None,
     ):
         if not self.log_channel_id:
@@ -129,17 +156,25 @@ bot = ModBot()
 # ==================================================
 
 def success_embed(title: str, description: str) -> discord.Embed:
-    e = discord.Embed(title=f"✅ {title}", description=description, color=Colors.SUCCESS)
+    e = discord.Embed(
+        title=f"{E.VERIFY} {title}",
+        description=description,
+        color=Colors.MAIN,
+    )
     e.timestamp = discord.utils.utcnow()
     return e
 
 def error_embed(title: str, description: str) -> discord.Embed:
-    e = discord.Embed(title=f"❌ {title}", description=description, color=Colors.ERROR)
+    e = discord.Embed(
+        title=f"{E.ARROW_RED} {title}",
+        description=description,
+        color=Colors.MAIN,
+    )
     e.timestamp = discord.utils.utcnow()
     return e
 
-def mod_embed(title: str, description: str, color: int) -> discord.Embed:
-    e = discord.Embed(title=title, description=description, color=color)
+def mod_embed(title: str, description: str) -> discord.Embed:
+    e = discord.Embed(title=title, description=description, color=Colors.MAIN)
     e.timestamp = discord.utils.utcnow()
     return e
 
@@ -147,7 +182,7 @@ def mod_embed(title: str, description: str, color: int) -> discord.Embed:
 # -------------- MODAL DE EMBED -------------------
 # ==================================================
 
-class EmbedModal(Modal, title="✨ Criar Embed"):
+class EmbedModal(Modal, title="Criar Embed"):
     titulo = TextInput(
         label="Título",
         placeholder="Título do embed...",
@@ -162,8 +197,8 @@ class EmbedModal(Modal, title="✨ Criar Embed"):
         max_length=4000,
     )
     cor = TextInput(
-        label="Cor (hex, ex: #5865F2)",
-        placeholder="#5865F2",
+        label="Cor (hex, ex: #590CEA)",
+        placeholder="#590CEA",
         required=False,
         max_length=7,
     )
@@ -185,15 +220,14 @@ class EmbedModal(Modal, title="✨ Criar Embed"):
         self.canal = canal
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Processar cor
-        color = Colors.PRIMARY
+        color = Colors.MAIN
         raw_color = self.cor.value.strip()
         if raw_color:
             try:
                 color = int(raw_color.lstrip("#"), 16)
             except ValueError:
                 await interaction.response.send_message(
-                    embed=error_embed("Cor inválida", "Use o formato `#RRGGBB`, ex: `#5865F2`."),
+                    embed=error_embed("Cor inválida", "Use o formato `#RRGGBB`, ex: `#590CEA`."),
                     ephemeral=True,
                 )
                 return
@@ -207,14 +241,13 @@ class EmbedModal(Modal, title="✨ Criar Embed"):
 
         if self.rodape.value.strip():
             embed.set_footer(text=self.rodape.value.strip())
-
         if self.imagem_url.value.strip():
             embed.set_image(url=self.imagem_url.value.strip())
 
         try:
             await self.canal.send(embed=embed)
             await interaction.response.send_message(
-                embed=success_embed("Embed enviado!", f"Sua embed foi publicada em {self.canal.mention}."),
+                embed=success_embed("Embed enviada!", f"Sua embed foi publicada em {self.canal.mention}."),
                 ephemeral=True,
             )
         except discord.Forbidden:
@@ -229,43 +262,6 @@ class EmbedModal(Modal, title="✨ Criar Embed"):
             )
 
 # ==================================================
-# ------------ EMBED COM CAMPO EXTRA --------------
-# ==================================================
-
-class EmbedFieldModal(Modal, title="➕ Adicionar Campo"):
-    campo_nome = TextInput(label="Nome do campo", max_length=256, required=True)
-    campo_valor = TextInput(
-        label="Valor do campo",
-        style=discord.TextStyle.paragraph,
-        max_length=1024,
-        required=True,
-    )
-    inline = TextInput(
-        label="Inline? (sim/não)",
-        placeholder="sim",
-        max_length=3,
-        required=False,
-    )
-
-    def __init__(self, embed: discord.Embed, canal: discord.TextChannel):
-        super().__init__()
-        self.embed_data = embed
-        self.canal = canal
-
-    async def on_submit(self, interaction: discord.Interaction):
-        is_inline = self.inline.value.strip().lower() in ("sim", "s", "yes", "y", "1")
-        self.embed_data.add_field(
-            name=self.campo_nome.value,
-            value=self.campo_valor.value,
-            inline=is_inline,
-        )
-        await self.canal.send(embed=self.embed_data)
-        await interaction.response.send_message(
-            embed=success_embed("Embed com campo enviado!", f"Publicado em {self.canal.mention}."),
-            ephemeral=True,
-        )
-
-# ==================================================
 # ----------- VIEW DE PREVIEW DE EMBED ------------
 # ==================================================
 
@@ -276,25 +272,25 @@ class EmbedBuilderView(View):
         super().__init__(timeout=300)
         self.autor = autor
         self.canal = canal
-        self.embed_atual: discord.Embed | None = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.autor.id:
-            await interaction.response.send_message("❌ Apenas quem iniciou pode usar esses botões.", ephemeral=True)
+            await interaction.response.send_message(
+                f"{E.ARROW_RED} Apenas quem iniciou pode usar esses botões.", ephemeral=True
+            )
             return False
         return True
 
-    @discord.ui.button(label="✏️ Criar Embed", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Criar Embed", style=discord.ButtonStyle.primary, emoji="✏️")
     async def criar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        modal = EmbedModal(self.canal)
-        await interaction.response.send_modal(modal)
+        await interaction.response.send_modal(EmbedModal(self.canal))
 
-    @discord.ui.button(label="📢 Anunciar", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Anunciar", style=discord.ButtonStyle.success, emoji="📣")
     async def anunciar(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(
-            title="📢 Anúncio",
-            description="*(edite o conteúdo acima depois de enviar usando o botão Criar Embed)*",
-            color=Colors.INFO,
+            title=f"{E.ANNOUNCE} Anúncio",
+            description="*(edite o conteúdo usando o botão Criar Embed)*",
+            color=Colors.MAIN,
         )
         embed.timestamp = discord.utils.utcnow()
         await self.canal.send(embed=embed)
@@ -303,19 +299,19 @@ class EmbedBuilderView(View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label="📌 Regras", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Regras", style=discord.ButtonStyle.secondary, emoji="📋")
     async def regras(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(
-            title="📌 Regras do Servidor",
+            title=f"{E.RULES} Regras do Servidor",
             description=(
-                "Bem-vindo! Por favor, leia e respeite as regras abaixo.\n\n"
-                "**1.** Respeite todos os membros.\n"
-                "**2.** Sem spam ou flood.\n"
-                "**3.** Sem conteúdo NSFW fora dos canais permitidos.\n"
-                "**4.** Siga os Termos de Serviço do Discord.\n"
-                "**5.** Decisões da staff são finais."
+                f"Bem-vindo! Leia e respeite as regras abaixo.\n\n"
+                f"{E.ARROW_BLUE} **1.** Respeite todos os membros.\n"
+                f"{E.ARROW_BLUE} **2.** Sem spam ou flood.\n"
+                f"{E.ARROW_BLUE} **3.** Sem conteúdo NSFW fora dos canais permitidos.\n"
+                f"{E.ARROW_BLUE} **4.** Siga os Termos de Serviço do Discord.\n"
+                f"{E.ARROW_BLUE} **5.** Decisões da staff são finais."
             ),
-            color=Colors.PRIMARY,
+            color=Colors.MAIN,
         )
         embed.set_footer(text="Ao participar, você concorda com essas regras.")
         embed.timestamp = discord.utils.utcnow()
@@ -325,10 +321,12 @@ class EmbedBuilderView(View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label="❌ Cancelar", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.danger, emoji="✖️")
     async def cancelar(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.stop()
-        await interaction.response.send_message("❌ Criação de embed cancelada.", ephemeral=True)
+        await interaction.response.send_message(
+            f"{E.ARROW_RED} Criação de embed cancelada.", ephemeral=True
+        )
 
 # ==================================================
 # ------------ COMMAND: /embed --------------------
@@ -340,14 +338,14 @@ class EmbedBuilderView(View):
 async def embed_cmd(interaction: discord.Interaction, canal: discord.TextChannel):
     view = EmbedBuilderView(autor=interaction.user, canal=canal)
     preview = discord.Embed(
-        title="✨ Construtor de Embeds",
+        title=f"{E.STAR} Construtor de Embeds",
         description=(
             f"Escolha uma opção abaixo para enviar uma embed em {canal.mention}.\n\n"
-            "**✏️ Criar Embed** — cria um embed totalmente customizado via formulário\n"
-            "**📢 Anunciar** — envia um template de anúncio\n"
-            "**📌 Regras** — envia um template de regras"
+            f"{E.ARROW_BLUE} **Criar Embed** — totalmente customizado via formulário\n"
+            f"{E.ARROW_BLUE} **Anunciar** — template de anúncio pronto\n"
+            f"{E.ARROW_BLUE} **Regras** — template de regras formatado"
         ),
-        color=Colors.PRIMARY,
+        color=Colors.MAIN,
     )
     preview.set_footer(text=f"Solicitado por {interaction.user.display_name}")
     preview.timestamp = discord.utils.utcnow()
@@ -363,14 +361,14 @@ async def embed_cmd(interaction: discord.Interaction, canal: discord.TextChannel
     canal="Canal de destino",
     titulo="Título da embed",
     descricao="Descrição/conteúdo",
-    cor="Cor em hex (ex: #5865F2) — padrão: azul Discord",
+    cor="Cor em hex (ex: #590CEA) — padrão: roxo",
 )
 async def embed_rapido(
     interaction: discord.Interaction,
     canal: discord.TextChannel,
     titulo: str,
     descricao: str,
-    cor: str = "#5865F2",
+    cor: str = "#590CEA",
 ):
     try:
         color = int(cor.lstrip("#"), 16)
@@ -401,9 +399,9 @@ async def embed_rapido(
 async def ping(interaction: discord.Interaction):
     latency = round(bot.latency * 1000)
     embed = discord.Embed(
-        title="🏓 Pong!",
-        description=f"Latência da API: `{latency}ms`",
-        color=Colors.SUCCESS if latency < 150 else Colors.WARNING,
+        title=f"{E.DISCORD} Pong!",
+        description=f"{E.ARROW_BLUE} Latência da API: `{latency}ms`",
+        color=Colors.MAIN,
     )
     embed.timestamp = discord.utils.utcnow()
     await interaction.response.send_message(embed=embed)
@@ -418,25 +416,25 @@ async def userinfo(interaction: discord.Interaction, membro: discord.Member | No
     membro = membro or interaction.user
     roles = [r.mention for r in reversed(membro.roles) if r.name != "@everyone"]
     embed = discord.Embed(
-        title=f"👤 {membro.display_name}",
-        color=membro.color if membro.color.value else Colors.PRIMARY,
+        title=f"{E.STAFF} {membro.display_name}",
+        color=Colors.MAIN,
     )
     embed.set_thumbnail(url=membro.display_avatar.url)
-    embed.add_field(name="Tag", value=str(membro), inline=True)
-    embed.add_field(name="ID", value=f"`{membro.id}`", inline=True)
-    embed.add_field(name="Bot?", value="✅ Sim" if membro.bot else "❌ Não", inline=True)
+    embed.add_field(name=f"{E.WHITE_IC} Tag",             value=str(membro), inline=True)
+    embed.add_field(name=f"{E.INFO_IC} ID",               value=f"`{membro.id}`", inline=True)
+    embed.add_field(name=f"{E.VERIFY} Bot?",              value="Sim" if membro.bot else "Não", inline=True)
     embed.add_field(
-        name="Entrou no servidor",
+        name=f"{E.ARROW_BLUE} Entrou no servidor",
         value=discord.utils.format_dt(membro.joined_at, "R") if membro.joined_at else "Desconhecido",
         inline=True,
     )
     embed.add_field(
-        name="Conta criada",
+        name=f"{E.STAR} Conta criada",
         value=discord.utils.format_dt(membro.created_at, "R"),
         inline=True,
     )
     embed.add_field(
-        name=f"Cargos ({len(roles)})",
+        name=f"{E.SETTINGS} Cargos ({len(roles)})",
         value=" ".join(roles[:10]) + ("..." if len(roles) > 10 else "") if roles else "Nenhum",
         inline=False,
     )
@@ -452,25 +450,25 @@ async def userinfo(interaction: discord.Interaction, membro: discord.Member | No
 async def serverinfo(interaction: discord.Interaction):
     g = interaction.guild
     embed = discord.Embed(
-        title=f"🏠 {g.name}",
-        color=Colors.PRIMARY,
+        title=f"{E.DISCORD} {g.name}",
+        color=Colors.MAIN,
     )
     if g.icon:
         embed.set_thumbnail(url=g.icon.url)
-    embed.add_field(name="ID", value=f"`{g.id}`", inline=True)
-    embed.add_field(name="Dono", value=f"<@{g.owner_id}>", inline=True)
-    embed.add_field(name="Região", value=str(g.preferred_locale), inline=True)
-    embed.add_field(name="Membros", value=f"`{g.member_count}`", inline=True)
-    embed.add_field(name="Canais", value=f"`{len(g.channels)}`", inline=True)
-    embed.add_field(name="Cargos", value=f"`{len(g.roles)}`", inline=True)
-    embed.add_field(name="Emojis", value=f"`{len(g.emojis)}`", inline=True)
+    embed.add_field(name=f"{E.INFO_IC} ID",       value=f"`{g.id}`", inline=True)
+    embed.add_field(name=f"{E.STAFF} Dono",       value=f"<@{g.owner_id}>", inline=True)
+    embed.add_field(name=f"{E.STAGE} Região",     value=str(g.preferred_locale), inline=True)
+    embed.add_field(name=f"{E.VERIFY} Membros",   value=f"`{g.member_count}`", inline=True)
+    embed.add_field(name=f"{E.ANNOUNCE} Canais",  value=f"`{len(g.channels)}`", inline=True)
+    embed.add_field(name=f"{E.SETTINGS} Cargos",  value=f"`{len(g.roles)}`", inline=True)
+    embed.add_field(name=f"{E.STAR_P} Emojis",    value=f"`{len(g.emojis)}`", inline=True)
     embed.add_field(
-        name="Boosts",
+        name=f"{E.NITRO} Boosts",
         value=f"`{g.premium_subscription_count}` (Nível {g.premium_tier})",
         inline=True,
     )
     embed.add_field(
-        name="Criado em",
+        name=f"{E.ARROW_BLUE} Criado em",
         value=discord.utils.format_dt(g.created_at, "D"),
         inline=True,
     )
@@ -487,13 +485,13 @@ async def serverinfo(interaction: discord.Interaction):
 async def avatar(interaction: discord.Interaction, membro: discord.Member | None = None):
     membro = membro or interaction.user
     embed = discord.Embed(
-        title=f"🖼️ Avatar de {membro.display_name}",
-        color=Colors.PRIMARY,
+        title=f"{E.STAR} Avatar de {membro.display_name}",
+        color=Colors.MAIN,
     )
     embed.set_image(url=membro.display_avatar.with_size(1024).url)
-    embed.add_field(name="Links", value=(
-        f"[PNG]({membro.display_avatar.with_format('png').url}) • "
-        f"[JPG]({membro.display_avatar.with_format('jpg').url}) • "
+    embed.add_field(name=f"{E.SEARCH} Links", value=(
+        f"[PNG]({membro.display_avatar.with_format('png').url}) · "
+        f"[JPG]({membro.display_avatar.with_format('jpg').url}) · "
         f"[WEBP]({membro.display_avatar.with_format('webp').url})"
     ))
     embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
@@ -509,7 +507,10 @@ async def avatar(interaction: discord.Interaction, membro: discord.Member | None
 async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
     bot.log_channel_id = canal.id
     await interaction.response.send_message(
-        embed=success_embed("Configuração salva", f"Canal de logs definido para {canal.mention}."),
+        embed=success_embed(
+            "Configuração salva",
+            f"{E.ARROW_BLUE} Canal de logs definido para {canal.mention}.",
+        ),
         ephemeral=True,
     )
     log.info(f"Canal de logs atualizado para #{canal.name} ({canal.id})")
@@ -524,7 +525,9 @@ async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
 @app_commands.describe(membro="Membro a ser banido", motivo="Motivo do banimento")
 async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo especificado"):
     if membro == interaction.user:
-        return await interaction.response.send_message(embed=error_embed("Erro", "Você não pode se banir."), ephemeral=True)
+        return await interaction.response.send_message(
+            embed=error_embed("Erro", "Você não pode se banir."), ephemeral=True
+        )
     if membro.top_role >= interaction.guild.me.top_role:
         return await interaction.response.send_message(
             embed=error_embed("Sem permissão", "Não consigo banir esse membro (cargo superior ao meu)."), ephemeral=True
@@ -536,15 +539,15 @@ async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: 
         pass
     await membro.ban(reason=f"{interaction.user} — {motivo}", delete_message_days=0)
     embed = mod_embed(
-        "🔨 Membro Banido",
-        f"**Usuário:** {membro.mention} (`{membro}`)\n**Motivo:** {motivo}\n**Moderador:** {interaction.user.mention}",
-        Colors.ERROR,
+        f"{E.ARROW_RED} Membro Banido",
+        f"{E.STAFF} **Usuário:** {membro.mention} (`{membro}`)\n"
+        f"{E.PIN} **Motivo:** {motivo}\n"
+        f"{E.BRANCORE} **Moderador:** {interaction.user.mention}",
     )
     await interaction.followup.send(embed=embed)
     await bot.log_action(
-        title="🔨 Ban",
+        title=f"{E.ARROW_RED} Ban",
         description=f"{membro} banido por {interaction.user}.",
-        color=Colors.ERROR,
         fields=[("Motivo", motivo, False)],
     )
 
@@ -561,22 +564,28 @@ async def unban(interaction: discord.Interaction, user_id: str, motivo: str = "S
     try:
         uid = int(user_id)
     except ValueError:
-        return await interaction.followup.send(embed=error_embed("ID inválido", "O ID precisa ser um número."), ephemeral=True)
+        return await interaction.followup.send(
+            embed=error_embed("ID inválido", "O ID precisa ser um número."), ephemeral=True
+        )
     try:
         user = await bot.fetch_user(uid)
         await interaction.guild.unban(user, reason=f"{interaction.user} — {motivo}")
         await interaction.followup.send(
-            embed=success_embed("Usuário desbanido", f"{user} (`{uid}`) foi desbanido.\nMotivo: {motivo}"),
+            embed=success_embed(
+                "Usuário desbanido",
+                f"{E.ARROW_GREEN} {user} (`{uid}`) foi desbanido.\n{E.PIN} **Motivo:** {motivo}",
+            ),
             ephemeral=True,
         )
         await bot.log_action(
-            title="✅ Unban",
+            title=f"{E.ARROW_GREEN} Unban",
             description=f"{user} desbanido por {interaction.user}.",
-            color=Colors.SUCCESS,
             fields=[("Motivo", motivo, False)],
         )
     except discord.NotFound:
-        await interaction.followup.send(embed=error_embed("Não encontrado", "Usuário não encontrado ou não está banido."), ephemeral=True)
+        await interaction.followup.send(
+            embed=error_embed("Não encontrado", "Usuário não encontrado ou não está banido."), ephemeral=True
+        )
     except discord.HTTPException as e:
         await interaction.followup.send(embed=error_embed("Erro", str(e)), ephemeral=True)
 
@@ -590,7 +599,9 @@ async def unban(interaction: discord.Interaction, user_id: str, motivo: str = "S
 @app_commands.describe(membro="Membro a ser expulso", motivo="Motivo da expulsão")
 async def kick(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo especificado"):
     if membro == interaction.user:
-        return await interaction.response.send_message(embed=error_embed("Erro", "Você não pode se expulsar."), ephemeral=True)
+        return await interaction.response.send_message(
+            embed=error_embed("Erro", "Você não pode se expulsar."), ephemeral=True
+        )
     if membro.top_role >= interaction.guild.me.top_role:
         return await interaction.response.send_message(
             embed=error_embed("Sem permissão", "Não consigo expulsar esse membro (cargo superior ao meu)."), ephemeral=True
@@ -602,15 +613,15 @@ async def kick(interaction: discord.Interaction, membro: discord.Member, motivo:
         pass
     await membro.kick(reason=f"{interaction.user} — {motivo}")
     embed = mod_embed(
-        "👢 Membro Expulso",
-        f"**Usuário:** {membro.mention} (`{membro}`)\n**Motivo:** {motivo}\n**Moderador:** {interaction.user.mention}",
-        Colors.ORANGE,
+        f"{E.ARROW_ORANGE} Membro Expulso",
+        f"{E.STAFF} **Usuário:** {membro.mention} (`{membro}`)\n"
+        f"{E.PIN} **Motivo:** {motivo}\n"
+        f"{E.BRANCORE} **Moderador:** {interaction.user.mention}",
     )
     await interaction.followup.send(embed=embed)
     await bot.log_action(
-        title="👢 Kick",
+        title=f"{E.ARROW_ORANGE} Kick",
         description=f"{membro} expulso por {interaction.user}.",
-        color=Colors.ORANGE,
         fields=[("Motivo", motivo, False)],
     )
 
@@ -631,15 +642,16 @@ async def mute(interaction: discord.Interaction, membro: discord.Member, minutos
     until = discord.utils.utcnow() + timedelta(minutes=minutos)
     await membro.timeout(until, reason=f"Mute por {interaction.user} — {minutos} min")
     embed = mod_embed(
-        "🔇 Membro Silenciado",
-        f"**Usuário:** {membro.mention}\n**Duração:** {minutos} minuto(s)\n**Moderador:** {interaction.user.mention}\n**Expira:** {discord.utils.format_dt(until, 'R')}",
-        Colors.WARNING,
+        f"{E.ARROW_YELLOW} Membro Silenciado",
+        f"{E.STAFF} **Usuário:** {membro.mention}\n"
+        f"{E.ARROW_BLUE} **Duração:** {minutos} minuto(s)\n"
+        f"{E.BRANCORE} **Moderador:** {interaction.user.mention}\n"
+        f"{E.LOADING} **Expira:** {discord.utils.format_dt(until, 'R')}",
     )
     await interaction.followup.send(embed=embed)
     await bot.log_action(
-        title="🔇 Mute",
+        title=f"{E.ARROW_YELLOW} Mute",
         description=f"{membro} silenciado por {interaction.user} por {minutos} minuto(s).",
-        color=Colors.WARNING,
     )
 
 # ==================================================
@@ -658,15 +670,14 @@ async def unmute(interaction: discord.Interaction, membro: discord.Member):
         )
     await membro.timeout(None, reason=f"Unmute por {interaction.user}")
     embed = mod_embed(
-        "🔊 Timeout Removido",
-        f"**Usuário:** {membro.mention}\n**Moderador:** {interaction.user.mention}",
-        Colors.SUCCESS,
+        f"{E.ARROW_GREEN} Timeout Removido",
+        f"{E.STAFF} **Usuário:** {membro.mention}\n"
+        f"{E.BRANCORE} **Moderador:** {interaction.user.mention}",
     )
     await interaction.followup.send(embed=embed)
     await bot.log_action(
-        title="🔊 Unmute",
+        title=f"{E.ARROW_GREEN} Unmute",
         description=f"Timeout de {membro} removido por {interaction.user}.",
-        color=Colors.SUCCESS,
     )
 
 # ==================================================
@@ -681,13 +692,15 @@ async def clear(interaction: discord.Interaction, quantidade: app_commands.Range
     await interaction.response.defer(ephemeral=True)
     deleted = await interaction.channel.purge(limit=quantidade)
     await interaction.followup.send(
-        embed=success_embed("Mensagens apagadas", f"{len(deleted)} mensagem(ns) apagada(s) em {interaction.channel.mention}."),
+        embed=success_embed(
+            "Mensagens apagadas",
+            f"{E.ARROW_BLUE} `{len(deleted)}` mensagem(ns) apagada(s) em {interaction.channel.mention}.",
+        ),
         ephemeral=True,
     )
     await bot.log_action(
-        title="🗑️ Clear",
-        description=f"{interaction.user} apagou {len(deleted)} mensagem(ns) em {interaction.channel.mention}.",
-        color=Colors.PRIMARY,
+        title=f"{E.WARN_IC} Clear",
+        description=f"{interaction.user} apagou `{len(deleted)}` mensagem(ns) em {interaction.channel.mention}.",
     )
 
 # ==================================================
@@ -705,22 +718,23 @@ async def warn(interaction: discord.Interaction, membro: discord.Member, motivo:
     _warns.setdefault(membro.id, []).append(motivo)
     total = len(_warns[membro.id])
     embed = mod_embed(
-        "⚠️ Aviso Aplicado",
-        f"**Usuário:** {membro.mention}\n**Motivo:** {motivo}\n**Moderador:** {interaction.user.mention}\n**Total de avisos:** `{total}`",
-        Colors.WARNING,
+        f"{E.WARN_IC} Aviso Aplicado",
+        f"{E.STAFF} **Usuário:** {membro.mention}\n"
+        f"{E.PIN} **Motivo:** {motivo}\n"
+        f"{E.BRANCORE} **Moderador:** {interaction.user.mention}\n"
+        f"{E.STAR} **Total de avisos:** `{total}`",
     )
     await interaction.response.send_message(embed=embed)
     try:
         await membro.send(
-            f"⚠️ Você recebeu um aviso no servidor **{interaction.guild.name}**.\n"
+            f"{E.WARN_IC} Você recebeu um aviso no servidor **{interaction.guild.name}**.\n"
             f"**Motivo:** {motivo}\n**Total de avisos:** {total}"
         )
     except (discord.Forbidden, discord.HTTPException):
         pass
     await bot.log_action(
-        title="⚠️ Warn",
+        title=f"{E.WARN_IC} Warn",
         description=f"{membro} avisado por {interaction.user}.",
-        color=Colors.WARNING,
         fields=[("Motivo", motivo, False), ("Total de avisos", str(total), True)],
     )
 
@@ -732,13 +746,14 @@ async def warns(interaction: discord.Interaction, membro: discord.Member):
     lista = _warns.get(membro.id, [])
     if not lista:
         return await interaction.response.send_message(
-            embed=success_embed("Sem avisos", f"{membro.mention} não tem nenhum aviso."), ephemeral=True
+            embed=success_embed("Sem avisos", f"{membro.mention} não tem nenhum aviso registrado."),
+            ephemeral=True,
         )
-    desc = "\n".join(f"`{i+1}.` {w}" for i, w in enumerate(lista))
+    desc = "\n".join(f"{E.ARROW_BLUE} `{i+1}.` {w}" for i, w in enumerate(lista))
     embed = discord.Embed(
-        title=f"⚠️ Avisos de {membro.display_name}",
+        title=f"{E.WARN_IC} Avisos de {membro.display_name}",
         description=desc,
-        color=Colors.WARNING,
+        color=Colors.MAIN,
     )
     embed.set_thumbnail(url=membro.display_avatar.url)
     embed.set_footer(text=f"Total: {len(lista)} aviso(s)")
@@ -752,7 +767,10 @@ async def warns(interaction: discord.Interaction, membro: discord.Member):
 async def clearwarns(interaction: discord.Interaction, membro: discord.Member):
     _warns.pop(membro.id, None)
     await interaction.response.send_message(
-        embed=success_embed("Avisos removidos", f"Todos os avisos de {membro.mention} foram removidos."),
+        embed=success_embed(
+            "Avisos removidos",
+            f"{E.ARROW_GREEN} Todos os avisos de {membro.mention} foram removidos.",
+        ),
         ephemeral=True,
     )
 
@@ -768,17 +786,17 @@ async def filosofia(interaction: discord.Interaction, termo: str):
     normal = quote_plus(termo)
     titulo = termo.title()
     links = {
-        "<a:51047animatedarrowwhite:1430338988765347850> Stanford Encyclopedia": (f"https://plato.stanford.edu/search/searcher.py?query={normal}", "SEP"),
-        "<a:51047animatedarrowwhite:1430338988765347850> Google Scholar": (f"https://scholar.google.com/scholar?q={encoded}", "Academic paper"),
-        "<a:51047animatedarrowwhite:1430338988765347850> PhilPapers": (f"https://philpapers.org/s/{normal}", "PhilPapers"),
-        "<a:51047animatedarrowwhite:1430338988765347850> Springer": (f"https://link.springer.com/search?query={normal}", "Journal article"),
-        "<a:51047animatedarrowwhite:1430338988765347850> Anna's Archive": (f"https://annas-archive.org/search?q={normal}", "Book sources"),
-        "<a:51047animatedarrowwhite:1430338988765347850> Internet Archive": (f"https://archive.org/search?query={normal}", "Digital archive"),
+        f"{E.SEARCH} Stanford Encyclopedia": (f"https://plato.stanford.edu/search/searcher.py?query={normal}", "SEP"),
+        f"{E.ARROW_BLUE} Google Scholar":     (f"https://scholar.google.com/scholar?q={encoded}", "Academic paper"),
+        f"{E.ARROW_BLUE} PhilPapers":         (f"https://philpapers.org/s/{normal}", "PhilPapers"),
+        f"{E.ARROW_BLUE} Springer":           (f"https://link.springer.com/search?query={normal}", "Journal article"),
+        f"{E.ARROW_BLUE} Anna's Archive":     (f"https://annas-archive.org/search?q={normal}", "Book sources"),
+        f"{E.ARROW_BLUE} Internet Archive":   (f"https://archive.org/search?query={normal}", "Digital archive"),
     }
     embed = discord.Embed(
-        title="<a:9582dsicordveriyblack:1430269158024810598> Recursos Acadêmicos",
-        description=f"**Busca:** {termo}",
-        color=Colors.DARK,
+        title=f"{E.VERIFY} Recursos Acadêmicos",
+        description=f"{E.ARROW_BLUE} **Busca:** {termo}",
+        color=Colors.MAIN,
     )
     for field_name, (url, label) in links.items():
         embed.add_field(name=field_name, value=f"[{titulo} — {label}]({url})", inline=False)
