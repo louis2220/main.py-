@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 import discord
 from discord import app_commands
 from discord.ext import tasks
-from discord.ui import View, Modal, TextInput
+from discord.ui import View, Modal, TextInput, Select
 
 # ==================================================
 # ------------------- LOGGING ----------------------
@@ -91,10 +91,17 @@ class ModBot(discord.Client):
     def __init__(self):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
-        self.log_channel_id: int | None = None
+
+        # IDs configuráveis via /setup
+        self.log_channel_id:      int | None = None
+        self.ticket_category_id:  int | None = None
+        self.staff_role_id:       int | None = None
+        self.ticket_log_channel_id: int | None = None
+
+        # Controle de tickets abertos: user_id -> channel_id
+        self.open_tickets: dict[int, int] = {}
 
     async def setup_hook(self):
-        # Sync global — aparece em TODOS os servidores onde o bot estiver
         await self.tree.sync()
         log.info("Slash commands sincronizados globalmente.")
 
@@ -116,8 +123,9 @@ class ModBot(discord.Client):
             msg = f"{E.LOADING} Aguarde `{error.retry_after:.1f}s` antes de usar este comando novamente."
         else:
             msg = f"{E.ARROW_RED} Ocorreu um erro ao executar esse comando."
-            log.warning(f"Erro no comando '{interaction.command.name if interaction.command else 'unknown'}': {error}")
-
+            log.warning(
+                f"Erro no comando '{interaction.command.name if interaction.command else 'unknown'}': {error}"
+            )
         try:
             if interaction.response.is_done():
                 await interaction.followup.send(msg, ephemeral=True)
@@ -179,8 +187,10 @@ def mod_embed(title: str, description: str) -> discord.Embed:
     return e
 
 # ==================================================
-# -------------- MODAL DE EMBED -------------------
+# =========== SISTEMA DE EMBEDS ===================
 # ==================================================
+
+# -------------- MODAL: CRIAR EMBED ---------------
 
 class EmbedModal(Modal, title="Criar Embed"):
     titulo = TextInput(
@@ -238,7 +248,6 @@ class EmbedModal(Modal, title="Criar Embed"):
             color=color,
         )
         embed.timestamp = discord.utils.utcnow()
-
         if self.rodape.value.strip():
             embed.set_footer(text=self.rodape.value.strip())
         if self.imagem_url.value.strip():
@@ -247,27 +256,119 @@ class EmbedModal(Modal, title="Criar Embed"):
         try:
             await self.canal.send(embed=embed)
             await interaction.response.send_message(
-                embed=success_embed("Embed enviada!", f"Sua embed foi publicada em {self.canal.mention}."),
+                embed=success_embed("Embed enviada!", f"Publicada em {self.canal.mention}."),
                 ephemeral=True,
             )
         except discord.Forbidden:
             await interaction.response.send_message(
-                embed=error_embed("Sem permissão", f"Não tenho permissão para enviar mensagens em {self.canal.mention}."),
+                embed=error_embed("Sem permissão", f"Não tenho permissão para enviar em {self.canal.mention}."),
                 ephemeral=True,
             )
-        except discord.HTTPException as e:
+        except discord.HTTPException as exc:
             await interaction.response.send_message(
-                embed=error_embed("Erro", f"Falha ao enviar embed: {e}"),
+                embed=error_embed("Erro", f"Falha ao enviar embed: {exc}"),
                 ephemeral=True,
             )
 
-# ==================================================
-# ----------- VIEW DE PREVIEW DE EMBED ------------
-# ==================================================
+# -------------- MODAL: EDITAR EMBED --------------
+
+class EmbedEditModal(Modal, title="Editar Embed"):
+    novo_titulo = TextInput(
+        label="Novo título (deixe em branco para manter)",
+        required=False,
+        max_length=256,
+    )
+    nova_descricao = TextInput(
+        label="Nova descrição (deixe em branco para manter)",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=4000,
+    )
+    nova_cor = TextInput(
+        label="Nova cor hex (ex: #590CEA)",
+        placeholder="#590CEA",
+        required=False,
+        max_length=7,
+    )
+    novo_rodape = TextInput(
+        label="Novo rodapé (deixe em branco para manter)",
+        required=False,
+        max_length=2048,
+    )
+    nova_imagem = TextInput(
+        label="Nova URL de imagem (deixe em branco para manter)",
+        required=False,
+        max_length=512,
+    )
+
+    def __init__(self, message: discord.Message):
+        super().__init__()
+        self.target_message = message
+        # Pré-preencher com valores atuais da embed
+        old = message.embeds[0] if message.embeds else None
+        if old:
+            if old.title:
+                self.novo_titulo.default = old.title
+            if old.description:
+                self.nova_descricao.default = old.description[:4000]
+            if old.color:
+                self.nova_cor.default = f"#{old.color.value:06X}"
+            if old.footer and old.footer.text:
+                self.novo_rodape.default = old.footer.text
+            if old.image and old.image.url:
+                self.nova_imagem.default = old.image.url
+
+    async def on_submit(self, interaction: discord.Interaction):
+        old_embed = self.target_message.embeds[0] if self.target_message.embeds else discord.Embed()
+
+        # Cor
+        color = old_embed.color.value if old_embed.color else Colors.MAIN
+        raw_color = self.nova_cor.value.strip()
+        if raw_color:
+            try:
+                color = int(raw_color.lstrip("#"), 16)
+            except ValueError:
+                return await interaction.response.send_message(
+                    embed=error_embed("Cor inválida", "Use o formato `#RRGGBB`."), ephemeral=True
+                )
+
+        new_embed = discord.Embed(
+            title=self.novo_titulo.value.strip() or old_embed.title,
+            description=self.nova_descricao.value.strip() or old_embed.description,
+            color=color,
+        )
+        new_embed.timestamp = discord.utils.utcnow()
+
+        rodape = self.novo_rodape.value.strip()
+        if rodape:
+            new_embed.set_footer(text=rodape)
+        elif old_embed.footer and old_embed.footer.text:
+            new_embed.set_footer(text=old_embed.footer.text)
+
+        imagem = self.nova_imagem.value.strip()
+        if imagem:
+            new_embed.set_image(url=imagem)
+        elif old_embed.image and old_embed.image.url:
+            new_embed.set_image(url=old_embed.image.url)
+
+        try:
+            await self.target_message.edit(embed=new_embed)
+            await interaction.response.send_message(
+                embed=success_embed("Embed editada!", "As alterações foram aplicadas com sucesso."),
+                ephemeral=True,
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                embed=error_embed("Sem permissão", "Não consigo editar essa mensagem."), ephemeral=True
+            )
+        except discord.HTTPException as exc:
+            await interaction.response.send_message(
+                embed=error_embed("Erro", str(exc)), ephemeral=True
+            )
+
+# -------------- VIEW DO BUILDER DE EMBED ---------
 
 class EmbedBuilderView(View):
-    """View interativa para construir embeds passo a passo."""
-
     def __init__(self, autor: discord.Member, canal: discord.TextChannel):
         super().__init__(timeout=300)
         self.autor = autor
@@ -289,7 +390,7 @@ class EmbedBuilderView(View):
     async def anunciar(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(
             title=f"{E.ANNOUNCE} Anúncio",
-            description="*(edite o conteúdo usando o botão Criar Embed)*",
+            description="*(edite o conteúdo usando /embed-editar)*",
             color=Colors.MAIN,
         )
         embed.timestamp = discord.utils.utcnow()
@@ -325,11 +426,395 @@ class EmbedBuilderView(View):
     async def cancelar(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.stop()
         await interaction.response.send_message(
-            f"{E.ARROW_RED} Criação de embed cancelada.", ephemeral=True
+            f"{E.ARROW_RED} Criação cancelada.", ephemeral=True
         )
 
 # ==================================================
-# ------------ COMMAND: /embed --------------------
+# =========== SISTEMA DE TICKETS ==================
+# ==================================================
+
+# Categorias disponíveis para tickets
+TICKET_CATEGORIES = [
+    discord.SelectOption(
+        label="Denúncias",
+        value="denuncia",
+        description="Denunciar um membro ou situação",
+        emoji="🚨",
+    ),
+    discord.SelectOption(
+        label="Compra de VIP",
+        value="vip",
+        description="Adquirir um cargo VIP",
+        emoji="👑",
+    ),
+    discord.SelectOption(
+        label="Resgate de Prêmio",
+        value="premio",
+        description="Resgatar um prêmio conquistado",
+        emoji="🎁",
+    ),
+    discord.SelectOption(
+        label="Patrocínio",
+        value="patrocinio",
+        description="Proposta de parceria ou patrocínio",
+        emoji="🤝",
+    ),
+    discord.SelectOption(
+        label="Outros",
+        value="outros",
+        description="Dúvidas gerais ou outros assuntos",
+        emoji="💬",
+    ),
+]
+
+TICKET_EMOJI_MAP = {
+    "denuncia":   "🚨",
+    "vip":        "👑",
+    "premio":     "🎁",
+    "patrocinio": "🤝",
+    "outros":     "💬",
+}
+
+TICKET_LABEL_MAP = {
+    "denuncia":   "Denúncias",
+    "vip":        "Compra de VIP",
+    "premio":     "Resgate de Prêmio",
+    "patrocinio": "Patrocínio",
+    "outros":     "Outros",
+}
+
+# -------------- SELECT DE CATEGORIA --------------
+
+class TicketCategorySelect(Select):
+    def __init__(self):
+        super().__init__(
+            placeholder="Selecione o motivo do seu ticket...",
+            options=TICKET_CATEGORIES,
+            min_values=1,
+            max_values=1,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        categoria = self.values[0]
+        # Verifica se já tem ticket aberto
+        if interaction.user.id in bot.open_tickets:
+            canal_existente = interaction.guild.get_channel(bot.open_tickets[interaction.user.id])
+            if canal_existente:
+                return await interaction.response.send_message(
+                    embed=error_embed(
+                        "Ticket já aberto",
+                        f"{E.ARROW_BLUE} Você já tem um ticket aberto: {canal_existente.mention}\n"
+                        f"Feche-o antes de abrir outro.",
+                    ),
+                    ephemeral=True,
+                )
+            else:
+                # Canal foi deletado manualmente, limpar registro
+                del bot.open_tickets[interaction.user.id]
+
+        # Verificar configuração
+        if not bot.ticket_category_id:
+            return await interaction.response.send_message(
+                embed=error_embed(
+                    "Não configurado",
+                    f"{E.SETTINGS} O sistema de tickets não está configurado.\n"
+                    f"Um administrador precisa usar `/setup-tickets`.",
+                ),
+                ephemeral=True,
+            )
+
+        await interaction.response.defer(ephemeral=True)
+
+        guild = interaction.guild
+        category = guild.get_channel(bot.ticket_category_id)
+        staff_role = guild.get_role(bot.staff_role_id) if bot.staff_role_id else None
+
+        emoji = TICKET_EMOJI_MAP.get(categoria, "💬")
+        label = TICKET_LABEL_MAP.get(categoria, "Ticket")
+
+        # Nome do canal: ticket-usuario
+        nome_canal = f"ticket-{interaction.user.name}".lower().replace(" ", "-")[:50]
+
+        # Permissões do canal
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+            ),
+            guild.me: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                manage_channels=True,
+                manage_messages=True,
+                read_message_history=True,
+            ),
+        }
+        if staff_role:
+            overwrites[staff_role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_messages=True,
+            )
+
+        try:
+            ticket_channel = await guild.create_text_channel(
+                name=nome_canal,
+                category=category if isinstance(category, discord.CategoryChannel) else None,
+                overwrites=overwrites,
+                reason=f"Ticket aberto por {interaction.user} — {label}",
+            )
+        except discord.Forbidden:
+            return await interaction.followup.send(
+                embed=error_embed("Sem permissão", "Não consigo criar canais. Verifique as permissões do bot."),
+                ephemeral=True,
+            )
+        except discord.HTTPException as exc:
+            return await interaction.followup.send(
+                embed=error_embed("Erro", f"Falha ao criar canal: {exc}"), ephemeral=True
+            )
+
+        # Registrar ticket
+        bot.open_tickets[interaction.user.id] = ticket_channel.id
+
+        # Embed de boas-vindas no canal do ticket
+        welcome_embed = discord.Embed(
+            title=f"{emoji} {label}",
+            description=(
+                f"{E.STAFF} **Aberto por:** {interaction.user.mention}\n"
+                f"{E.PIN} **Categoria:** {label}\n\n"
+                f"{E.ARROW_BLUE} Olá, {interaction.user.mention}! Descreva seu caso com o máximo de detalhes possível.\n"
+                f"{E.LOADING} Nossa equipe irá te atender em breve."
+            ),
+            color=Colors.MAIN,
+        )
+        welcome_embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        welcome_embed.set_footer(text=f"ID do usuário: {interaction.user.id}")
+        welcome_embed.timestamp = discord.utils.utcnow()
+
+        # View com botão de fechar
+        close_view = TicketCloseView(opener_id=interaction.user.id)
+
+        # Ping da staff
+        staff_ping = staff_role.mention if staff_role else ""
+        await ticket_channel.send(
+            content=f"{interaction.user.mention} {staff_ping}".strip(),
+            embed=welcome_embed,
+            view=close_view,
+        )
+
+        # DM de confirmação
+        try:
+            dm_embed = discord.Embed(
+                title=f"{E.VERIFY} Ticket aberto!",
+                description=(
+                    f"{E.ARROW_BLUE} Seu ticket de **{label}** foi aberto em **{guild.name}**.\n"
+                    f"{E.INFO_IC} Acesse: {ticket_channel.mention}\n"
+                    f"{E.LOADING} Aguarde o atendimento da staff."
+                ),
+                color=Colors.MAIN,
+            )
+            dm_embed.timestamp = discord.utils.utcnow()
+            await interaction.user.send(embed=dm_embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+        await interaction.followup.send(
+            embed=success_embed(
+                "Ticket criado!",
+                f"{E.ARROW_BLUE} Seu ticket foi aberto em {ticket_channel.mention}.",
+            ),
+            ephemeral=True,
+        )
+
+        # Log
+        await bot.log_action(
+            title=f"{emoji} Ticket Aberto",
+            description=f"{interaction.user} abriu um ticket de **{label}**.",
+            fields=[
+                ("Canal", ticket_channel.mention, True),
+                ("Categoria", label, True),
+                ("Usuário ID", str(interaction.user.id), True),
+            ],
+        )
+
+        log.info(f"Ticket criado: #{nome_canal} por {interaction.user} ({categoria})")
+
+class TicketSelectView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketCategorySelect())
+
+# -------------- VIEW DO CANAL DO TICKET ----------
+
+class TicketCloseView(View):
+    def __init__(self, opener_id: int):
+        super().__init__(timeout=None)
+        self.opener_id = opener_id
+
+    @discord.ui.button(label="Fechar Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="ticket_close")
+    async def fechar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Apenas staff ou o próprio dono pode fechar
+        is_staff = (
+            bot.staff_role_id
+            and any(r.id == bot.staff_role_id for r in interaction.user.roles)
+        )
+        is_owner = interaction.user.id == self.opener_id
+        is_admin = interaction.user.guild_permissions.administrator
+
+        if not (is_staff or is_owner or is_admin):
+            return await interaction.response.send_message(
+                embed=error_embed("Sem permissão", "Apenas a staff ou quem abriu o ticket pode fechá-lo."),
+                ephemeral=True,
+            )
+
+        await interaction.response.send_message(
+            embed=mod_embed(
+                f"{E.ARROW_YELLOW} Fechando ticket...",
+                f"{E.LOADING} Este canal será deletado em **5 segundos**.",
+            )
+        )
+
+        # Remover do registro
+        for uid, cid in list(bot.open_tickets.items()):
+            if cid == interaction.channel.id:
+                del bot.open_tickets[uid]
+                break
+
+        # Log antes de deletar
+        await bot.log_action(
+            title=f"🔒 Ticket Fechado",
+            description=f"Ticket `{interaction.channel.name}` fechado por {interaction.user.mention}.",
+            fields=[("Canal", interaction.channel.name, True)],
+        )
+
+        import asyncio
+        await asyncio.sleep(5)
+        try:
+            await interaction.channel.delete(reason=f"Ticket fechado por {interaction.user}")
+        except discord.HTTPException:
+            pass
+
+# -------------- COMMAND: /ticket-setup -----------
+
+@bot.tree.command(name="setup-tickets", description="Configura o sistema de tickets do servidor")
+@app_commands.default_permissions(administrator=True)
+@app_commands.describe(
+    categoria="Categoria onde os canais de ticket serão criados",
+    cargo_staff="Cargo da staff que terá acesso aos tickets",
+    canal_log="Canal para logs de tickets (opcional)",
+)
+async def setup_tickets(
+    interaction: discord.Interaction,
+    categoria: discord.CategoryChannel,
+    cargo_staff: discord.Role,
+    canal_log: discord.TextChannel | None = None,
+):
+    bot.ticket_category_id = categoria.id
+    bot.staff_role_id = cargo_staff.id
+    if canal_log:
+        bot.ticket_log_channel_id = canal_log.id
+        bot.log_channel_id = canal_log.id
+
+    embed = success_embed(
+        "Tickets configurados!",
+        f"{E.ARROW_BLUE} **Categoria:** {categoria.name}\n"
+        f"{E.STAFF} **Cargo staff:** {cargo_staff.mention}\n"
+        f"{E.INFO_IC} **Log:** {canal_log.mention if canal_log else 'Não definido'}\n\n"
+        f"{E.ARROW_GREEN} Use `/ticket-painel` para enviar o painel de tickets em um canal.",
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    log.info(f"Tickets configurados: categoria={categoria.id}, staff={cargo_staff.id}")
+
+# -------------- COMMAND: /ticket-painel ----------
+
+@bot.tree.command(name="ticket-painel", description="Envia o painel de abertura de tickets em um canal")
+@app_commands.default_permissions(administrator=True)
+@app_commands.describe(
+    canal="Canal onde o painel será enviado",
+    titulo="Título do painel (opcional)",
+    descricao="Descrição do painel (opcional)",
+    imagem_url="URL de imagem/banner para o painel (opcional)",
+)
+async def ticket_painel(
+    interaction: discord.Interaction,
+    canal: discord.TextChannel,
+    titulo: str = "Suporte | Ticket",
+    descricao: str = "Abra um ticket escolhendo a opção que mais se encaixa no seu caso.",
+    imagem_url: str | None = None,
+):
+    embed = discord.Embed(
+        title=f"{E.INFO_IC} {titulo}",
+        description=(
+            f"{E.ARROW_BLUE} {descricao}\n\n"
+            f"{E.FIRE} **Categorias disponíveis:**\n"
+            f"🚨 Denúncias\n"
+            f"👑 Compra de VIP\n"
+            f"🎁 Resgate de Prêmio\n"
+            f"🤝 Patrocínio\n"
+            f"💬 Outros"
+        ),
+        color=Colors.MAIN,
+    )
+    embed.set_footer(text=f"{interaction.guild.name} • Suporte")
+    embed.timestamp = discord.utils.utcnow()
+
+    if imagem_url:
+        embed.set_image(url=imagem_url)
+
+    view = TicketSelectView()
+    try:
+        await canal.send(embed=embed, view=view)
+        await interaction.response.send_message(
+            embed=success_embed("Painel enviado!", f"{E.ARROW_BLUE} Painel de tickets publicado em {canal.mention}."),
+            ephemeral=True,
+        )
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            embed=error_embed("Sem permissão", f"Não consigo enviar em {canal.mention}."), ephemeral=True
+        )
+
+# -------------- COMMAND: /fechar-ticket ----------
+
+@bot.tree.command(name="fechar-ticket", description="Fecha e deleta o ticket atual")
+@app_commands.default_permissions(manage_channels=True)
+async def fechar_ticket(interaction: discord.Interaction):
+    # Verifica se o canal atual é um ticket
+    is_ticket = any(cid == interaction.channel.id for cid in bot.open_tickets.values())
+    if not is_ticket:
+        return await interaction.response.send_message(
+            embed=error_embed("Erro", "Este canal não é um ticket aberto."), ephemeral=True
+        )
+
+    await interaction.response.send_message(
+        embed=mod_embed(
+            f"{E.ARROW_YELLOW} Fechando ticket...",
+            f"{E.LOADING} Este canal será deletado em **5 segundos**.",
+        )
+    )
+
+    for uid, cid in list(bot.open_tickets.items()):
+        if cid == interaction.channel.id:
+            del bot.open_tickets[uid]
+            break
+
+    await bot.log_action(
+        title="🔒 Ticket Fechado",
+        description=f"Ticket `{interaction.channel.name}` fechado por {interaction.user.mention}.",
+    )
+
+    import asyncio
+    await asyncio.sleep(5)
+    try:
+        await interaction.channel.delete(reason=f"Ticket fechado por {interaction.user}")
+    except discord.HTTPException:
+        pass
+
+# ==================================================
+# =========== SISTEMA DE EMBEDS (COMANDOS) =========
 # ==================================================
 
 @bot.tree.command(name="embed", description="Criar e enviar uma embed personalizada em um canal")
@@ -340,7 +825,7 @@ async def embed_cmd(interaction: discord.Interaction, canal: discord.TextChannel
     preview = discord.Embed(
         title=f"{E.STAR} Construtor de Embeds",
         description=(
-            f"Escolha uma opção abaixo para enviar uma embed em {canal.mention}.\n\n"
+            f"Escolha uma opção para enviar uma embed em {canal.mention}.\n\n"
             f"{E.ARROW_BLUE} **Criar Embed** — totalmente customizado via formulário\n"
             f"{E.ARROW_BLUE} **Anunciar** — template de anúncio pronto\n"
             f"{E.ARROW_BLUE} **Regras** — template de regras formatado"
@@ -350,10 +835,6 @@ async def embed_cmd(interaction: discord.Interaction, canal: discord.TextChannel
     preview.set_footer(text=f"Solicitado por {interaction.user.display_name}")
     preview.timestamp = discord.utils.utcnow()
     await interaction.response.send_message(embed=preview, view=view, ephemeral=True)
-
-# ==================================================
-# ------------ COMMAND: /embed-rapido -------------
-# ==================================================
 
 @bot.tree.command(name="embed-rapido", description="Envia uma embed simples rapidamente")
 @app_commands.default_permissions(manage_messages=True)
@@ -376,11 +857,9 @@ async def embed_rapido(
         return await interaction.response.send_message(
             embed=error_embed("Cor inválida", "Use o formato `#RRGGBB`."), ephemeral=True
         )
-
     embed = discord.Embed(title=titulo, description=descricao, color=color)
     embed.set_footer(text=f"por {interaction.user.display_name}")
     embed.timestamp = discord.utils.utcnow()
-
     try:
         await canal.send(embed=embed)
         await interaction.response.send_message(
@@ -391,8 +870,50 @@ async def embed_rapido(
             embed=error_embed("Sem permissão", f"Não posso enviar em {canal.mention}."), ephemeral=True
         )
 
+@bot.tree.command(name="embed-editar", description="Edita uma embed existente pelo ID da mensagem")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.describe(
+    canal="Canal onde a mensagem está",
+    message_id="ID da mensagem com a embed",
+)
+async def embed_editar(
+    interaction: discord.Interaction,
+    canal: discord.TextChannel,
+    message_id: str,
+):
+    try:
+        mid = int(message_id)
+    except ValueError:
+        return await interaction.response.send_message(
+            embed=error_embed("ID inválido", "O ID da mensagem precisa ser um número."), ephemeral=True
+        )
+
+    try:
+        message = await canal.fetch_message(mid)
+    except discord.NotFound:
+        return await interaction.response.send_message(
+            embed=error_embed("Mensagem não encontrada", f"Não encontrei a mensagem `{mid}` em {canal.mention}."),
+            ephemeral=True,
+        )
+    except discord.Forbidden:
+        return await interaction.response.send_message(
+            embed=error_embed("Sem permissão", f"Não consigo acessar mensagens em {canal.mention}."), ephemeral=True
+        )
+
+    # Verificar se a mensagem é do bot e tem embed
+    if message.author.id != bot.user.id:
+        return await interaction.response.send_message(
+            embed=error_embed("Erro", "Só consigo editar embeds enviadas por mim."), ephemeral=True
+        )
+    if not message.embeds:
+        return await interaction.response.send_message(
+            embed=error_embed("Sem embed", "Essa mensagem não contém nenhuma embed."), ephemeral=True
+        )
+
+    await interaction.response.send_modal(EmbedEditModal(message))
+
 # ==================================================
-# ---------------- COMANDOS PÚBLICOS ---------------
+# ============= COMANDOS PÚBLICOS =================
 # ==================================================
 
 @bot.tree.command(name="ping", description="Verifica se o bot está online e mostra a latência")
@@ -406,23 +927,16 @@ async def ping(interaction: discord.Interaction):
     embed.timestamp = discord.utils.utcnow()
     await interaction.response.send_message(embed=embed)
 
-# ==================================================
-# -------------- COMMAND: /userinfo ---------------
-# ==================================================
-
 @bot.tree.command(name="userinfo", description="Exibe informações sobre um membro")
 @app_commands.describe(membro="Membro a consultar (padrão: você mesmo)")
 async def userinfo(interaction: discord.Interaction, membro: discord.Member | None = None):
     membro = membro or interaction.user
     roles = [r.mention for r in reversed(membro.roles) if r.name != "@everyone"]
-    embed = discord.Embed(
-        title=f"{E.STAFF} {membro.display_name}",
-        color=Colors.MAIN,
-    )
+    embed = discord.Embed(title=f"{E.STAFF} {membro.display_name}", color=Colors.MAIN)
     embed.set_thumbnail(url=membro.display_avatar.url)
-    embed.add_field(name=f"{E.WHITE_IC} Tag",             value=str(membro), inline=True)
-    embed.add_field(name=f"{E.INFO_IC} ID",               value=f"`{membro.id}`", inline=True)
-    embed.add_field(name=f"{E.VERIFY} Bot?",              value="Sim" if membro.bot else "Não", inline=True)
+    embed.add_field(name=f"{E.WHITE_IC} Tag",   value=str(membro), inline=True)
+    embed.add_field(name=f"{E.INFO_IC} ID",     value=f"`{membro.id}`", inline=True)
+    embed.add_field(name=f"{E.VERIFY} Bot?",    value="Sim" if membro.bot else "Não", inline=True)
     embed.add_field(
         name=f"{E.ARROW_BLUE} Entrou no servidor",
         value=discord.utils.format_dt(membro.joined_at, "R") if membro.joined_at else "Desconhecido",
@@ -442,17 +956,10 @@ async def userinfo(interaction: discord.Interaction, membro: discord.Member | No
     embed.timestamp = discord.utils.utcnow()
     await interaction.response.send_message(embed=embed)
 
-# ==================================================
-# -------------- COMMAND: /serverinfo -------------
-# ==================================================
-
 @bot.tree.command(name="serverinfo", description="Exibe informações sobre o servidor")
 async def serverinfo(interaction: discord.Interaction):
     g = interaction.guild
-    embed = discord.Embed(
-        title=f"{E.DISCORD} {g.name}",
-        color=Colors.MAIN,
-    )
+    embed = discord.Embed(title=f"{E.DISCORD} {g.name}", color=Colors.MAIN)
     if g.icon:
         embed.set_thumbnail(url=g.icon.url)
     embed.add_field(name=f"{E.INFO_IC} ID",       value=f"`{g.id}`", inline=True)
@@ -476,18 +983,11 @@ async def serverinfo(interaction: discord.Interaction):
     embed.timestamp = discord.utils.utcnow()
     await interaction.response.send_message(embed=embed)
 
-# ==================================================
-# -------------- COMMAND: /avatar -----------------
-# ==================================================
-
 @bot.tree.command(name="avatar", description="Exibe o avatar de um membro em alta resolução")
 @app_commands.describe(membro="Membro cujo avatar exibir")
 async def avatar(interaction: discord.Interaction, membro: discord.Member | None = None):
     membro = membro or interaction.user
-    embed = discord.Embed(
-        title=f"{E.STAR} Avatar de {membro.display_name}",
-        color=Colors.MAIN,
-    )
+    embed = discord.Embed(title=f"{E.STAR} Avatar de {membro.display_name}", color=Colors.MAIN)
     embed.set_image(url=membro.display_avatar.with_size(1024).url)
     embed.add_field(name=f"{E.SEARCH} Links", value=(
         f"[PNG]({membro.display_avatar.with_format('png').url}) · "
@@ -499,7 +999,7 @@ async def avatar(interaction: discord.Interaction, membro: discord.Member | None
     await interaction.response.send_message(embed=embed)
 
 # ==================================================
-# ------------------ SETUP (ADMIN) -----------------
+# ============= SETUP (ADMIN) =====================
 # ==================================================
 
 @bot.tree.command(name="setup", description="Define o canal de logs do servidor")
@@ -516,7 +1016,7 @@ async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
     log.info(f"Canal de logs atualizado para #{canal.name} ({canal.id})")
 
 # ==================================================
-# ------------------ BAN --------------------------
+# ============= MODERAÇÃO =========================
 # ==================================================
 
 @bot.tree.command(name="ban", description="Banir um membro do servidor")
@@ -551,10 +1051,6 @@ async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: 
         fields=[("Motivo", motivo, False)],
     )
 
-# ==================================================
-# ------------------ UNBAN ------------------------
-# ==================================================
-
 @bot.tree.command(name="unban", description="Desbanir um usuário pelo ID")
 @app_commands.default_permissions(ban_members=True)
 @app_commands.checks.has_permissions(ban_members=True)
@@ -586,12 +1082,8 @@ async def unban(interaction: discord.Interaction, user_id: str, motivo: str = "S
         await interaction.followup.send(
             embed=error_embed("Não encontrado", "Usuário não encontrado ou não está banido."), ephemeral=True
         )
-    except discord.HTTPException as e:
-        await interaction.followup.send(embed=error_embed("Erro", str(e)), ephemeral=True)
-
-# ==================================================
-# ------------------ KICK -------------------------
-# ==================================================
+    except discord.HTTPException as exc:
+        await interaction.followup.send(embed=error_embed("Erro", str(exc)), ephemeral=True)
 
 @bot.tree.command(name="kick", description="Expulsar um membro do servidor")
 @app_commands.default_permissions(kick_members=True)
@@ -625,10 +1117,6 @@ async def kick(interaction: discord.Interaction, membro: discord.Member, motivo:
         fields=[("Motivo", motivo, False)],
     )
 
-# ==================================================
-# ------------------ MUTE --------------------------
-# ==================================================
-
 @bot.tree.command(name="mute", description="Aplicar timeout em um membro")
 @app_commands.default_permissions(moderate_members=True)
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -654,10 +1142,6 @@ async def mute(interaction: discord.Interaction, membro: discord.Member, minutos
         description=f"{membro} silenciado por {interaction.user} por {minutos} minuto(s).",
     )
 
-# ==================================================
-# ------------------ UNMUTE -----------------------
-# ==================================================
-
 @bot.tree.command(name="unmute", description="Remover timeout de um membro")
 @app_commands.default_permissions(moderate_members=True)
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -680,10 +1164,6 @@ async def unmute(interaction: discord.Interaction, membro: discord.Member):
         description=f"Timeout de {membro} removido por {interaction.user}.",
     )
 
-# ==================================================
-# ------------------ CLEAR ------------------------
-# ==================================================
-
 @bot.tree.command(name="clear", description="Apagar mensagens do canal")
 @app_commands.default_permissions(manage_messages=True)
 @app_commands.checks.has_permissions(manage_messages=True)
@@ -704,10 +1184,9 @@ async def clear(interaction: discord.Interaction, quantidade: app_commands.Range
     )
 
 # ==================================================
-# -------------- COMMAND: /warn -------------------
+# ============= SISTEMA DE WARNS ==================
 # ==================================================
 
-# Aviso em memória (reseta ao reiniciar; para persistência use um banco de dados)
 _warns: dict[int, list[str]] = {}
 
 @bot.tree.command(name="warn", description="Avisar um membro")
@@ -775,7 +1254,7 @@ async def clearwarns(interaction: discord.Interaction, membro: discord.Member):
     )
 
 # ==================================================
-# ---------------- FILOSOFIA / PESQUISA -----------
+# ============= FILOSOFIA / PESQUISA ==============
 # ==================================================
 
 @bot.tree.command(name="filosofia", description="Buscar artigos e recursos acadêmicos por tema")
@@ -805,14 +1284,14 @@ async def filosofia(interaction: discord.Interaction, termo: str):
     await interaction.followup.send(embed=embed)
 
 # ==================================================
-# ---------------- STATUS ROTATIVO ----------------
+# ============= STATUS ROTATIVO ===================
 # ==================================================
 
 _STATUS_LIST = [
-    ("Aprendendo matemática 🩵", discord.ActivityType.watching),
-    ("Olimpíadas ⚡",            discord.ActivityType.watching),
-    ("OBMEP 🏆",                 discord.ActivityType.watching),
-    ("Filosofia 🏮",             discord.ActivityType.watching),
+    ("Passando o Tempo 🩵", discord.ActivityType.watching),
+    ("Elétrico ⚡",            discord.ActivityType.watching),
+    ("Ganhando Servidores 🏆",                 discord.ActivityType.watching),
+    ("Ar fresco 🏮",             discord.ActivityType.watching),
 ]
 
 _cycle_status = itertools.cycle(_STATUS_LIST)
@@ -831,7 +1310,7 @@ async def before_rotate():
     await bot.wait_until_ready()
 
 # ==================================================
-# ------------------- ENTRY -----------------------
+# =================== ENTRY =======================
 # ==================================================
 
 if __name__ == "__main__":
