@@ -814,6 +814,263 @@ async def fechar_ticket(interaction: discord.Interaction):
         pass
 
 # ==================================================
+# =========== SISTEMA DE AUTOMOD ==================
+# ==================================================
+#
+# Cada servidor suporta até 6 regras de keyword +
+# regras de spam, menções, links e conteúdo de perfil.
+# Rodando /automod-setup em vários servidores, o total
+# acumulado pode bater 100 e garantir a badge.
+# ==================================================
+
+AUTOMOD_KEYWORDS = [
+    # Bloco 1 — Palavrões e ofensas gerais
+    ["idiota", "imbecil", "cretino", "babaca", "otário", "fdp", "vsf", "porra", "merda", "caralho"],
+    # Bloco 2 — Slurs e discriminação
+    ["viado", "bicha", "sapatão", "negro", "macaco", "judeu", "cigano", "nordestino de merda"],
+    # Bloco 3 — Ameaças e violência
+    ["vou te matar", "te mato", "sua vida não vale", "bomba", "explodir", "atirar em"],
+    # Bloco 4 — Spam e autopromoção
+    ["discord.gg", "discordapp.com/invite", "bit.ly", "tinyurl", "free nitro", "click here"],
+    # Bloco 5 — Conteúdo adulto
+    ["porn", "nude", "nudes", "sexo grátis", "pack", "onlyfans", "privacy"],
+    # Bloco 6 — Golpes e phishing
+    ["ganhe dinheiro", "ganhe robux", "ganhe nitro", "acesse agora", "promoção exclusiva", "clique aqui"],
+]
+
+async def create_automod_rules(guild: discord.Guild) -> tuple[int, int]:
+    """
+    Cria todas as regras de AutoMod possíveis no servidor.
+    Retorna (criadas, erros).
+    """
+    criadas = 0
+    erros = 0
+
+    # ── 1. Regras de keyword (máx. 6 por servidor) ──────────────────────────
+    for i, keywords in enumerate(AUTOMOD_KEYWORDS):
+        try:
+            await guild.create_automod_rule(
+                name=f"[Bot] Palavras bloqueadas #{i+1}",
+                event_type=discord.AutoModRuleEventType.message_send,
+                trigger=discord.AutoModTrigger(
+                    type=discord.AutoModRuleTriggerType.keyword,
+                    keyword_filter=keywords,
+                ),
+                actions=[
+                    discord.AutoModRuleAction(
+                        type=discord.AutoModRuleActionType.block_message,
+                        custom_message="Sua mensagem foi bloqueada por conter conteúdo proibido.",
+                    )
+                ],
+                enabled=True,
+                reason="AutoMod setup automático pelo bot",
+            )
+            criadas += 1
+        except discord.HTTPException:
+            erros += 1
+
+    # ── 2. Regra anti-spam (menções excessivas) ──────────────────────────────
+    try:
+        await guild.create_automod_rule(
+            name="[Bot] Anti-Mention Spam",
+            event_type=discord.AutoModRuleEventType.message_send,
+            trigger=discord.AutoModTrigger(
+                type=discord.AutoModRuleTriggerType.mention_spam,
+                mention_total_limit=5,
+            ),
+            actions=[
+                discord.AutoModRuleAction(
+                    type=discord.AutoModRuleActionType.block_message,
+                    custom_message="Muitas menções em uma só mensagem.",
+                ),
+                discord.AutoModRuleAction(
+                    type=discord.AutoModRuleActionType.timeout,
+                    duration=timedelta(minutes=10),
+                ),
+            ],
+            enabled=True,
+            reason="AutoMod setup automático pelo bot",
+        )
+        criadas += 1
+    except discord.HTTPException:
+        erros += 1
+
+    # ── 3. Regra anti-spam de conteúdo ──────────────────────────────────────
+    try:
+        await guild.create_automod_rule(
+            name="[Bot] Anti-Spam de Conteúdo",
+            event_type=discord.AutoModRuleEventType.message_send,
+            trigger=discord.AutoModTrigger(
+                type=discord.AutoModRuleTriggerType.spam,
+            ),
+            actions=[
+                discord.AutoModRuleAction(
+                    type=discord.AutoModRuleActionType.block_message,
+                    custom_message="Conteúdo identificado como spam.",
+                ),
+                discord.AutoModRuleAction(
+                    type=discord.AutoModRuleActionType.timeout,
+                    duration=timedelta(minutes=5),
+                ),
+            ],
+            enabled=True,
+            reason="AutoMod setup automático pelo bot",
+        )
+        criadas += 1
+    except discord.HTTPException:
+        erros += 1
+
+    # ── 4. Regra de keyword preset (conteúdo sexual/violência) ──────────────
+    try:
+        await guild.create_automod_rule(
+            name="[Bot] Conteúdo Explícito (Preset)",
+            event_type=discord.AutoModRuleEventType.message_send,
+            trigger=discord.AutoModTrigger(
+                type=discord.AutoModRuleTriggerType.keyword_preset,
+                presets=discord.AutoModPresets.sexual_content | discord.AutoModPresets.slurs,
+            ),
+            actions=[
+                discord.AutoModRuleAction(
+                    type=discord.AutoModRuleActionType.block_message,
+                    custom_message="Conteúdo não permitido neste servidor.",
+                )
+            ],
+            enabled=True,
+            reason="AutoMod setup automático pelo bot",
+        )
+        criadas += 1
+    except discord.HTTPException:
+        erros += 1
+
+    return criadas, erros
+
+
+@bot.tree.command(name="automod-setup", description="Cria regras de AutoMod automáticas neste servidor")
+@app_commands.default_permissions(administrator=True)
+@app_commands.describe(
+    canal_log="Canal onde o AutoMod vai registrar as ocorrências (opcional)"
+)
+async def automod_setup(
+    interaction: discord.Interaction,
+    canal_log: discord.TextChannel | None = None,
+):
+    await interaction.response.defer(ephemeral=True)
+
+    guild = interaction.guild
+
+    # Verificar regras existentes para não duplicar
+    try:
+        existing = await guild.fetch_automod_rules()
+        existing_names = {r.name for r in existing}
+    except discord.Forbidden:
+        return await interaction.followup.send(
+            embed=error_embed(
+                "Sem permissão",
+                "Preciso da permissão **Gerenciar Servidor** para criar regras de AutoMod.",
+            ),
+            ephemeral=True,
+        )
+
+    bot_rules = [n for n in existing_names if n.startswith("[Bot]")]
+    if bot_rules:
+        return await interaction.followup.send(
+            embed=error_embed(
+                "Já configurado",
+                f"{E.INFO_IC} Este servidor já tem **{len(bot_rules)}** regra(s) criadas pelo bot.\n"
+                f"{E.ARROW_BLUE} Use `/automod-status` para ver o total acumulado.",
+            ),
+            ephemeral=True,
+        )
+
+    # Criar as regras
+    criadas, erros = await create_automod_rules(guild)
+
+    # Configurar canal de log nas regras existentes se fornecido
+    if canal_log:
+        try:
+            rules = await guild.fetch_automod_rules()
+            for rule in rules:
+                if rule.name.startswith("[Bot]"):
+                    actions_with_log = list(rule.actions) + [
+                        discord.AutoModRuleAction(
+                            type=discord.AutoModRuleActionType.send_alert_message,
+                            channel=canal_log,
+                        )
+                    ]
+                    try:
+                        await rule.edit(actions=actions_with_log)
+                    except discord.HTTPException:
+                        pass
+        except discord.HTTPException:
+            pass
+
+    embed = discord.Embed(
+        title=f"{E.VERIFY} AutoMod Configurado!",
+        description=(
+            f"{E.ARROW_GREEN} **{criadas}** regra(s) criadas neste servidor.\n"
+            + (f"{E.ARROW_RED} **{erros}** regra(s) falharam (limite do servidor atingido).\n" if erros else "")
+            + (f"{E.INFO_IC} Logs serão enviados em {canal_log.mention}.\n" if canal_log else "")
+            + f"\n{E.STAR} **Regras ativas protegem contra:**\n"
+            f"{E.ARROW_BLUE} Palavrões e ofensas\n"
+            f"{E.ARROW_BLUE} Slurs e discriminação\n"
+            f"{E.ARROW_BLUE} Ameaças e violência\n"
+            f"{E.ARROW_BLUE} Spam de links e autopromoção\n"
+            f"{E.ARROW_BLUE} Conteúdo adulto\n"
+            f"{E.ARROW_BLUE} Golpes e phishing\n"
+            f"{E.ARROW_BLUE} Mention spam\n"
+            f"{E.ARROW_BLUE} Conteúdo explícito (preset)\n"
+            f"\n{E.LOADING} Rode este comando em mais servidores para acumular regras e conquistar a badge!"
+        ),
+        color=Colors.MAIN,
+    )
+    embed.set_footer(text=f"Servidor: {guild.name} • {guild.id}")
+    embed.timestamp = discord.utils.utcnow()
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+    await bot.log_action(
+        title=f"{E.SETTINGS} AutoMod Setup",
+        description=f"{interaction.user} configurou o AutoMod em **{guild.name}**.",
+        fields=[
+            ("Regras criadas", str(criadas), True),
+            ("Erros", str(erros), True),
+            ("Log", canal_log.mention if canal_log else "Não definido", True),
+        ],
+    )
+    log.info(f"AutoMod setup: {criadas} regras em {guild.name} ({guild.id})")
+
+
+@bot.tree.command(name="automod-status", description="Mostra quantas regras de AutoMod o bot criou neste servidor")
+@app_commands.default_permissions(manage_guild=True)
+async def automod_status(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        rules = await interaction.guild.fetch_automod_rules()
+    except discord.Forbidden:
+        return await interaction.followup.send(
+            embed=error_embed("Sem permissão", "Não consigo verificar as regras de AutoMod."), ephemeral=True
+        )
+
+    bot_rules = [r for r in rules if r.name.startswith("[Bot]")]
+    total = len(rules)
+    bot_total = len(bot_rules)
+
+    desc = "\n".join(f"{E.ARROW_BLUE} {r.name}" for r in bot_rules) or f"{E.ARROW_RED} Nenhuma regra encontrada."
+    embed = discord.Embed(
+        title=f"{E.SETTINGS} Status do AutoMod",
+        description=(
+            f"{E.INFO_IC} **Regras do bot neste servidor:** `{bot_total}`\n"
+            f"{E.STAR} **Total de regras no servidor:** `{total}`\n\n"
+            f"{E.ARROW_BLUE} **Regras criadas pelo bot:**\n{desc}\n\n"
+            f"{E.LOADING} Para a badge, você precisa de **100 regras** somando todos os servidores.\n"
+            f"Adicione o bot em mais servidores e rode `/automod-setup` em cada um!"
+        ),
+        color=Colors.MAIN,
+    )
+    embed.set_footer(text=f"Servidor: {interaction.guild.name}")
+    embed.timestamp = discord.utils.utcnow()
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+# ==================================================
 # =========== SISTEMA DE EMBEDS (COMANDOS) =========
 # ==================================================
 
@@ -1288,10 +1545,10 @@ async def filosofia(interaction: discord.Interaction, termo: str):
 # ==================================================
 
 _STATUS_LIST = [
-    ("Passando o Tempo 🩵", discord.ActivityType.watching),
-    ("Elétrico ⚡",            discord.ActivityType.watching),
-    ("Ganhando Servidores 🏆",                 discord.ActivityType.watching),
-    ("Ar fresco 🏮",             discord.ActivityType.watching),
+    ("Aprendendo matemática 🩵", discord.ActivityType.watching),
+    ("Olimpíadas ⚡",            discord.ActivityType.watching),
+    ("OBMEP 🏆",                 discord.ActivityType.watching),
+    ("Filosofia 🏮",             discord.ActivityType.watching),
 ]
 
 _cycle_status = itertools.cycle(_STATUS_LIST)
