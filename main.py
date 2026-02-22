@@ -66,10 +66,10 @@ class ModBot(discord.Client):
         self.log_channel_id: int | None = None
 
     async def setup_hook(self):
-        guild = discord.Object(id=GUILD_ID)
-        self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
-        log.info(f"Slash commands sincronizados para guild {GUILD_ID}.")
+        # Sync global — aparece em TODOS os servidores onde o bot estiver
+        # Primeira propagação pode levar até 1h pelo cache do Discord
+        await self.tree.sync()
+        log.info("Slash commands sincronizados globalmente.")
 
     async def on_ready(self):
         log.info(f"Bot online como {self.user} (ID: {self.user.id})")
@@ -335,7 +335,7 @@ class EmbedBuilderView(View):
 # ==================================================
 
 @bot.tree.command(name="embed", description="Criar e enviar uma embed personalizada em um canal")
-@app_commands.checks.has_permissions(manage_messages=True)
+@app_commands.default_permissions(manage_messages=True)
 @app_commands.describe(canal="Canal onde a embed será enviada")
 async def embed_cmd(interaction: discord.Interaction, canal: discord.TextChannel):
     view = EmbedBuilderView(autor=interaction.user, canal=canal)
@@ -358,7 +358,7 @@ async def embed_cmd(interaction: discord.Interaction, canal: discord.TextChannel
 # ==================================================
 
 @bot.tree.command(name="embed-rapido", description="Envia uma embed simples rapidamente")
-@app_commands.checks.has_permissions(manage_messages=True)
+@app_commands.default_permissions(manage_messages=True)
 @app_commands.describe(
     canal="Canal de destino",
     titulo="Título da embed",
@@ -505,7 +505,7 @@ async def avatar(interaction: discord.Interaction, membro: discord.Member | None
 # ==================================================
 
 @bot.tree.command(name="setup", description="Define o canal de logs do servidor")
-@app_commands.checks.has_permissions(administrator=True)
+@app_commands.default_permissions(administrator=True)
 async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
     bot.log_channel_id = canal.id
     await interaction.response.send_message(
@@ -519,6 +519,7 @@ async def setup(interaction: discord.Interaction, canal: discord.TextChannel):
 # ==================================================
 
 @bot.tree.command(name="ban", description="Banir um membro do servidor")
+@app_commands.default_permissions(ban_members=True)
 @app_commands.checks.has_permissions(ban_members=True)
 @app_commands.describe(membro="Membro a ser banido", motivo="Motivo do banimento")
 async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo especificado"):
@@ -552,6 +553,7 @@ async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: 
 # ==================================================
 
 @bot.tree.command(name="unban", description="Desbanir um usuário pelo ID")
+@app_commands.default_permissions(ban_members=True)
 @app_commands.checks.has_permissions(ban_members=True)
 @app_commands.describe(user_id="ID do usuário banido", motivo="Motivo do desbanimento")
 async def unban(interaction: discord.Interaction, user_id: str, motivo: str = "Sem motivo especificado"):
@@ -583,6 +585,7 @@ async def unban(interaction: discord.Interaction, user_id: str, motivo: str = "S
 # ==================================================
 
 @bot.tree.command(name="kick", description="Expulsar um membro do servidor")
+@app_commands.default_permissions(kick_members=True)
 @app_commands.checks.has_permissions(kick_members=True)
 @app_commands.describe(membro="Membro a ser expulso", motivo="Motivo da expulsão")
 async def kick(interaction: discord.Interaction, membro: discord.Member, motivo: str = "Sem motivo especificado"):
@@ -616,6 +619,7 @@ async def kick(interaction: discord.Interaction, membro: discord.Member, motivo:
 # ==================================================
 
 @bot.tree.command(name="mute", description="Aplicar timeout em um membro")
+@app_commands.default_permissions(moderate_members=True)
 @app_commands.checks.has_permissions(moderate_members=True)
 @app_commands.describe(membro="Membro a silenciar", minutos="Duração em minutos (máx. 40320)")
 async def mute(interaction: discord.Interaction, membro: discord.Member, minutos: app_commands.Range[int, 1, 40320]):
@@ -643,6 +647,7 @@ async def mute(interaction: discord.Interaction, membro: discord.Member, minutos
 # ==================================================
 
 @bot.tree.command(name="unmute", description="Remover timeout de um membro")
+@app_commands.default_permissions(moderate_members=True)
 @app_commands.checks.has_permissions(moderate_members=True)
 @app_commands.describe(membro="Membro para remover o timeout")
 async def unmute(interaction: discord.Interaction, membro: discord.Member):
@@ -669,6 +674,7 @@ async def unmute(interaction: discord.Interaction, membro: discord.Member):
 # ==================================================
 
 @bot.tree.command(name="clear", description="Apagar mensagens do canal")
+@app_commands.default_permissions(manage_messages=True)
 @app_commands.checks.has_permissions(manage_messages=True)
 @app_commands.describe(quantidade="Número de mensagens a apagar (1–100)")
 async def clear(interaction: discord.Interaction, quantidade: app_commands.Range[int, 1, 100]):
@@ -692,6 +698,7 @@ async def clear(interaction: discord.Interaction, quantidade: app_commands.Range
 _warns: dict[int, list[str]] = {}
 
 @bot.tree.command(name="warn", description="Avisar um membro")
+@app_commands.default_permissions(moderate_members=True)
 @app_commands.checks.has_permissions(moderate_members=True)
 @app_commands.describe(membro="Membro a ser avisado", motivo="Motivo do aviso")
 async def warn(interaction: discord.Interaction, membro: discord.Member, motivo: str):
@@ -718,6 +725,7 @@ async def warn(interaction: discord.Interaction, membro: discord.Member, motivo:
     )
 
 @bot.tree.command(name="warns", description="Ver os avisos de um membro")
+@app_commands.default_permissions(moderate_members=True)
 @app_commands.checks.has_permissions(moderate_members=True)
 @app_commands.describe(membro="Membro a consultar")
 async def warns(interaction: discord.Interaction, membro: discord.Member):
@@ -738,6 +746,7 @@ async def warns(interaction: discord.Interaction, membro: discord.Member):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="clearwarns", description="Limpar todos os avisos de um membro")
+@app_commands.default_permissions(administrator=True)
 @app_commands.checks.has_permissions(administrator=True)
 @app_commands.describe(membro="Membro cujos avisos serão removidos")
 async def clearwarns(interaction: discord.Interaction, membro: discord.Member):
