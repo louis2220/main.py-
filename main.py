@@ -828,119 +828,156 @@ AUTOMOD_KEYWORDS = [
     # Bloco 1 — Palavrões e ofensas gerais
     ["idiota", "imbecil", "cretino", "babaca", "otário", "fdp", "vsf", "porra", "merda", "caralho"],
     # Bloco 2 — Slurs e discriminação
-    ["viado", "bicha", "sapatão", "negro", "macaco", "judeu", "cigano", "nordestino de merda"],
+    ["viado", "bicha", "sapatão", "*macaco*", "judeu", "cigano"],
     # Bloco 3 — Ameaças e violência
-    ["vou te matar", "te mato", "sua vida não vale", "bomba", "explodir", "atirar em"],
+    ["*vou te matar*", "*te mato*", "*explodir*", "*atirar em*"],
     # Bloco 4 — Spam e autopromoção
-    ["discord.gg", "discordapp.com/invite", "bit.ly", "tinyurl", "free nitro", "click here"],
+    ["discord.gg/*", "*discordapp.com/invite*", "bit.ly/*", "tinyurl.com/*", "*free nitro*"],
     # Bloco 5 — Conteúdo adulto
-    ["porn", "nude", "nudes", "sexo grátis", "pack", "onlyfans", "privacy"],
+    ["*porn*", "*nude*", "*nudes*", "*pack*", "onlyfans.com/*"],
     # Bloco 6 — Golpes e phishing
-    ["ganhe dinheiro", "ganhe robux", "ganhe nitro", "acesse agora", "promoção exclusiva", "clique aqui"],
+    ["*ganhe nitro*", "*ganhe robux*", "*acesse agora*", "*clique aqui*", "*promoção exclusiva*"],
 ]
+
+async def _criar_regra_http(guild: discord.Guild, payload: dict) -> bool:
+    """Cria uma regra de AutoMod usando a API HTTP diretamente (mais confiável)."""
+    import aiohttp
+    url = f"https://discord.com/api/v10/guilds/{guild.id}/auto-moderation/rules"
+    headers = {
+        "Authorization": f"Bot {TOKEN}",
+        "Content-Type": "application/json",
+        "X-Audit-Log-Reason": "AutoMod setup automatico pelo bot",
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            return resp.status in (200, 201)
+
 
 async def create_automod_rules(guild: discord.Guild) -> tuple[int, int]:
     """
     Cria todas as regras de AutoMod possíveis no servidor.
+    Usa HTTP direto para garantir compatibilidade com todos os tipos.
     Retorna (criadas, erros).
     """
     criadas = 0
     erros = 0
 
-    # ── 1. Regras de keyword (máx. 6 por servidor) ──────────────────────────
+    # ── 1. Regras de KEYWORD (máx. 6 por servidor) ───────────────────────────
     for i, keywords in enumerate(AUTOMOD_KEYWORDS):
-        try:
-            await guild.create_automod_rule(
-                name=f"[Bot] Palavras bloqueadas #{i+1}",
-                event_type=discord.AutoModRuleEventType.message_send,
-                trigger=discord.AutoModTrigger(
-                    type=discord.AutoModRuleTriggerType.keyword,
-                    keyword_filter=keywords,
-                ),
-                actions=[
-                    discord.AutoModRuleAction(
-                        type=discord.AutoModRuleActionType.block_message,
-                        custom_message="Sua mensagem foi bloqueada por conter conteúdo proibido.",
-                    )
-                ],
-                enabled=True,
-                reason="AutoMod setup automático pelo bot",
-            )
+        payload = {
+            "name": f"[Bot] Palavras bloqueadas #{i+1}",
+            "event_type": 1,          # MESSAGE_SEND
+            "trigger_type": 1,        # KEYWORD
+            "trigger_metadata": {
+                "keyword_filter": keywords,
+            },
+            "actions": [
+                {
+                    "type": 1,         # BLOCK_MESSAGE
+                    "metadata": {
+                        "custom_message": "Sua mensagem foi bloqueada por conter conteúdo proibido."
+                    }
+                }
+            ],
+            "enabled": True,
+        }
+        ok = await _criar_regra_http(guild, payload)
+        if ok:
             criadas += 1
-        except discord.HTTPException:
+        else:
             erros += 1
 
-    # ── 2. Regra anti-spam (menções excessivas) ──────────────────────────────
-    try:
-        await guild.create_automod_rule(
-            name="[Bot] Anti-Mention Spam",
-            event_type=discord.AutoModRuleEventType.message_send,
-            trigger=discord.AutoModTrigger(
-                type=discord.AutoModRuleTriggerType.mention_spam,
-                mention_total_limit=5,
-            ),
-            actions=[
-                discord.AutoModRuleAction(
-                    type=discord.AutoModRuleActionType.block_message,
-                    custom_message="Muitas menções em uma só mensagem.",
-                ),
-                discord.AutoModRuleAction(
-                    type=discord.AutoModRuleActionType.timeout,
-                    duration=timedelta(minutes=10),
-                ),
-            ],
-            enabled=True,
-            reason="AutoMod setup automático pelo bot",
-        )
+    # ── 2. MENTION_SPAM (máx. 1 por servidor) ────────────────────────────────
+    payload = {
+        "name": "[Bot] Anti-Mention Spam",
+        "event_type": 1,
+        "trigger_type": 5,            # MENTION_SPAM
+        "trigger_metadata": {
+            "mention_total_limit": 5,
+            "mention_raid_protection_enabled": True,
+        },
+        "actions": [
+            {
+                "type": 1,            # BLOCK_MESSAGE
+                "metadata": {"custom_message": "Muitas menções em uma só mensagem."}
+            },
+            {
+                "type": 3,            # TIMEOUT
+                "metadata": {"duration_seconds": 600}  # 10 minutos
+            }
+        ],
+        "enabled": True,
+    }
+    ok = await _criar_regra_http(guild, payload)
+    if ok:
         criadas += 1
-    except discord.HTTPException:
+    else:
         erros += 1
 
-    # ── 3. Regra anti-spam de conteúdo ──────────────────────────────────────
-    try:
-        await guild.create_automod_rule(
-            name="[Bot] Anti-Spam de Conteúdo",
-            event_type=discord.AutoModRuleEventType.message_send,
-            trigger=discord.AutoModTrigger(
-                type=discord.AutoModRuleTriggerType.spam,
-            ),
-            actions=[
-                discord.AutoModRuleAction(
-                    type=discord.AutoModRuleActionType.block_message,
-                    custom_message="Conteúdo identificado como spam.",
-                ),
-                discord.AutoModRuleAction(
-                    type=discord.AutoModRuleActionType.timeout,
-                    duration=timedelta(minutes=5),
-                ),
-            ],
-            enabled=True,
-            reason="AutoMod setup automático pelo bot",
-        )
+    # ── 3. SPAM (máx. 1 por servidor) ────────────────────────────────────────
+    payload = {
+        "name": "[Bot] Anti-Spam de Conteúdo",
+        "event_type": 1,
+        "trigger_type": 3,            # SPAM
+        "actions": [
+            {
+                "type": 1,
+                "metadata": {"custom_message": "Conteúdo identificado como spam."}
+            }
+        ],
+        "enabled": True,
+    }
+    ok = await _criar_regra_http(guild, payload)
+    if ok:
         criadas += 1
-    except discord.HTTPException:
+    else:
         erros += 1
 
-    # ── 4. Regra de keyword preset (conteúdo sexual/violência) ──────────────
-    try:
-        await guild.create_automod_rule(
-            name="[Bot] Conteúdo Explícito (Preset)",
-            event_type=discord.AutoModRuleEventType.message_send,
-            trigger=discord.AutoModTrigger(
-                type=discord.AutoModRuleTriggerType.keyword_preset,
-                presets=discord.AutoModPresets.sexual_content | discord.AutoModPresets.slurs,
-            ),
-            actions=[
-                discord.AutoModRuleAction(
-                    type=discord.AutoModRuleActionType.block_message,
-                    custom_message="Conteúdo não permitido neste servidor.",
-                )
-            ],
-            enabled=True,
-            reason="AutoMod setup automático pelo bot",
-        )
+    # ── 4. KEYWORD_PRESET — Profanity + Sexual + Slurs (máx. 1) ─────────────
+    payload = {
+        "name": "[Bot] Conteúdo Explícito (Preset)",
+        "event_type": 1,
+        "trigger_type": 4,            # KEYWORD_PRESET
+        "trigger_metadata": {
+            "presets": [1, 2, 3],     # PROFANITY, SEXUAL_CONTENT, SLURS
+        },
+        "actions": [
+            {
+                "type": 1,
+                "metadata": {"custom_message": "Conteúdo não permitido neste servidor."}
+            }
+        ],
+        "enabled": True,
+    }
+    ok = await _criar_regra_http(guild, payload)
+    if ok:
         criadas += 1
-    except discord.HTTPException:
+    else:
+        erros += 1
+
+    # ── 5. MEMBER_PROFILE — palavras proibidas em bio/nick (máx. 1) ──────────
+    payload = {
+        "name": "[Bot] Perfil Inadequado",
+        "event_type": 2,              # MEMBER_UPDATE
+        "trigger_type": 6,            # MEMBER_PROFILE
+        "trigger_metadata": {
+            "keyword_filter": [
+                "*porn*", "*nude*", "*hack*", "*fdp*", "*porra*",
+                "*merda*", "*caralho*", "*viado*", "*putaria*",
+            ],
+        },
+        "actions": [
+            {
+                "type": 4,            # BLOCK_MEMBER_INTERACTION
+                "metadata": {}
+            }
+        ],
+        "enabled": True,
+    }
+    ok = await _criar_regra_http(guild, payload)
+    if ok:
+        criadas += 1
+    else:
         erros += 1
 
     return criadas, erros
@@ -1009,18 +1046,16 @@ async def automod_setup(
         title=f"{E.VERIFY} AutoMod Configurado!",
         description=(
             f"{E.ARROW_GREEN} **{criadas}** regra(s) criadas neste servidor.\n"
-            + (f"{E.ARROW_RED} **{erros}** regra(s) falharam (limite do servidor atingido).\n" if erros else "")
+            + (f"{E.ARROW_RED} **{erros}** regra(s) falharam (já existiam ou limite atingido).\n" if erros else "")
             + (f"{E.INFO_IC} Logs serão enviados em {canal_log.mention}.\n" if canal_log else "")
             + f"\n{E.STAR} **Regras ativas protegem contra:**\n"
-            f"{E.ARROW_BLUE} Palavrões e ofensas\n"
-            f"{E.ARROW_BLUE} Slurs e discriminação\n"
-            f"{E.ARROW_BLUE} Ameaças e violência\n"
-            f"{E.ARROW_BLUE} Spam de links e autopromoção\n"
-            f"{E.ARROW_BLUE} Conteúdo adulto\n"
-            f"{E.ARROW_BLUE} Golpes e phishing\n"
-            f"{E.ARROW_BLUE} Mention spam\n"
-            f"{E.ARROW_BLUE} Conteúdo explícito (preset)\n"
-            f"\n{E.LOADING} Rode este comando em mais servidores para acumular regras e conquistar a badge!"
+            f"{E.ARROW_BLUE} Palavrões e ofensas (6 blocos de keywords)\n"
+            f"{E.ARROW_BLUE} Mention spam (timeout automático)\n"
+            f"{E.ARROW_BLUE} Spam de conteúdo genérico\n"
+            f"{E.ARROW_BLUE} Conteúdo explícito (preset Discord)\n"
+            f"{E.ARROW_BLUE} Perfis inadequados (bio/nick)\n"
+            f"\n{E.INFO_IC} Máximo possível: **10 regras** por servidor.\n"
+            f"{E.LOADING} Com **10 servidores** você já atinge 100 regras para a badge!"
         ),
         color=Colors.MAIN,
     )
