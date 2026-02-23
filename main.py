@@ -1,8 +1,7 @@
-import itertools
+ import itertools
 import logging
 import os
 from datetime import timedelta
-from urllib.parse import quote_plus
 
 import discord
 from discord import app_commands
@@ -102,6 +101,8 @@ class ModBot(discord.Client):
         self.open_tickets: dict[int, int] = {}
 
     async def setup_hook(self):
+        # Sync global — aparece em TODOS os servidores
+        # Pode levar até 1h na primeira vez; atualizações são rápidas
         await self.tree.sync()
         log.info("Slash commands sincronizados globalmente.")
 
@@ -1289,7 +1290,7 @@ async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: 
         return await interaction.response.send_message(
             embed=error_embed("Sem permissão", "Não consigo banir esse membro (cargo superior ao meu)."), ephemeral=True
         )
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     try:
         await membro.send(f"Você foi **banido** do servidor **{interaction.guild.name}**.\nMotivo: {motivo}")
     except (discord.Forbidden, discord.HTTPException):
@@ -1301,7 +1302,7 @@ async def ban(interaction: discord.Interaction, membro: discord.Member, motivo: 
         f"{E.PIN} **Motivo:** {motivo}\n"
         f"{E.BRANCORE} **Moderador:** {interaction.user.mention}",
     )
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send(embed=embed, ephemeral=True)
     await bot.log_action(
         title=f"{E.ARROW_RED} Ban",
         description=f"{membro} banido por {interaction.user}.",
@@ -1355,7 +1356,7 @@ async def kick(interaction: discord.Interaction, membro: discord.Member, motivo:
         return await interaction.response.send_message(
             embed=error_embed("Sem permissão", "Não consigo expulsar esse membro (cargo superior ao meu)."), ephemeral=True
         )
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     try:
         await membro.send(f"Você foi **expulso** do servidor **{interaction.guild.name}**.\nMotivo: {motivo}")
     except (discord.Forbidden, discord.HTTPException):
@@ -1367,7 +1368,7 @@ async def kick(interaction: discord.Interaction, membro: discord.Member, motivo:
         f"{E.PIN} **Motivo:** {motivo}\n"
         f"{E.BRANCORE} **Moderador:** {interaction.user.mention}",
     )
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send(embed=embed, ephemeral=True)
     await bot.log_action(
         title=f"{E.ARROW_ORANGE} Kick",
         description=f"{membro} expulso por {interaction.user}.",
@@ -1383,7 +1384,7 @@ async def mute(interaction: discord.Interaction, membro: discord.Member, minutos
         return await interaction.response.send_message(
             embed=error_embed("Sem permissão", "Não consigo silenciar esse membro."), ephemeral=True
         )
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     until = discord.utils.utcnow() + timedelta(minutes=minutos)
     await membro.timeout(until, reason=f"Mute por {interaction.user} — {minutos} min")
     embed = mod_embed(
@@ -1393,7 +1394,7 @@ async def mute(interaction: discord.Interaction, membro: discord.Member, minutos
         f"{E.BRANCORE} **Moderador:** {interaction.user.mention}\n"
         f"{E.LOADING} **Expira:** {discord.utils.format_dt(until, 'R')}",
     )
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send(embed=embed, ephemeral=True)
     await bot.log_action(
         title=f"{E.ARROW_YELLOW} Mute",
         description=f"{membro} silenciado por {interaction.user} por {minutos} minuto(s).",
@@ -1404,7 +1405,7 @@ async def mute(interaction: discord.Interaction, membro: discord.Member, minutos
 @app_commands.checks.has_permissions(moderate_members=True)
 @app_commands.describe(membro="Membro para remover o timeout")
 async def unmute(interaction: discord.Interaction, membro: discord.Member):
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     if not membro.timed_out_until:
         return await interaction.followup.send(
             embed=error_embed("Erro", f"{membro.mention} não está em timeout."), ephemeral=True
@@ -1415,7 +1416,7 @@ async def unmute(interaction: discord.Interaction, membro: discord.Member):
         f"{E.STAFF} **Usuário:** {membro.mention}\n"
         f"{E.BRANCORE} **Moderador:** {interaction.user.mention}",
     )
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send(embed=embed, ephemeral=True)
     await bot.log_action(
         title=f"{E.ARROW_GREEN} Unmute",
         description=f"Timeout de {membro} removido por {interaction.user}.",
@@ -1460,7 +1461,7 @@ async def warn(interaction: discord.Interaction, membro: discord.Member, motivo:
         f"{E.BRANCORE} **Moderador:** {interaction.user.mention}\n"
         f"{E.STAR} **Total de avisos:** `{total}`",
     )
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
     try:
         await membro.send(
             f"{E.WARN_IC} Você recebeu um aviso no servidor **{interaction.guild.name}**.\n"
@@ -1511,44 +1512,22 @@ async def clearwarns(interaction: discord.Interaction, membro: discord.Member):
     )
 
 # ==================================================
-# ============= FILOSOFIA / PESQUISA ==============
-# ==================================================
-
-@bot.tree.command(name="filosofia", description="Buscar artigos e recursos acadêmicos por tema")
-@app_commands.describe(termo="Tema ou título para buscar")
-async def filosofia(interaction: discord.Interaction, termo: str):
-    await interaction.response.defer()
-    encoded = quote_plus(f'"{termo}"')
-    normal = quote_plus(termo)
-    titulo = termo.title()
-    links = {
-        f"{E.SEARCH} Stanford Encyclopedia": (f"https://plato.stanford.edu/search/searcher.py?query={normal}", "SEP"),
-        f"{E.ARROW_BLUE} Google Scholar":     (f"https://scholar.google.com/scholar?q={encoded}", "Academic paper"),
-        f"{E.ARROW_BLUE} PhilPapers":         (f"https://philpapers.org/s/{normal}", "PhilPapers"),
-        f"{E.ARROW_BLUE} Springer":           (f"https://link.springer.com/search?query={normal}", "Journal article"),
-        f"{E.ARROW_BLUE} Anna's Archive":     (f"https://annas-archive.org/search?q={normal}", "Book sources"),
-        f"{E.ARROW_BLUE} Internet Archive":   (f"https://archive.org/search?query={normal}", "Digital archive"),
-    }
-    embed = discord.Embed(
-        title=f"{E.VERIFY} Recursos Acadêmicos",
-        description=f"{E.ARROW_BLUE} **Busca:** {termo}",
-        color=Colors.MAIN,
-    )
-    for field_name, (url, label) in links.items():
-        embed.add_field(name=field_name, value=f"[{titulo} — {label}]({url})", inline=False)
-    embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
-    embed.timestamp = discord.utils.utcnow()
-    await interaction.followup.send(embed=embed)
-
-# ==================================================
 # ============= STATUS ROTATIVO ===================
 # ==================================================
+# Status customizado aparece como "bio" do bot,
+# do lado do avatar — igual ao de usuários normais.
 
 _STATUS_LIST = [
-    ("Aprendendo matemática 🩵", discord.ActivityType.watching),
-    ("Olimpíadas ⚡",            discord.ActivityType.watching),
-    ("OBMEP 🏆",                 discord.ActivityType.watching),
-    ("Filosofia 🏮",             discord.ActivityType.watching),
+    "☕ bebendo suco de maracujá",
+    "📖 lendo romance",
+    "🌐 entretendo nos servidores",
+    "🌙 vivendo por aí",
+    "🍳 comendo cuscuz com ovo",
+    "✂️ indo arrumar o cabelo",
+    "🎵 ouvindo música no fone",
+    "💤 descansando entre comandos",
+    "🌿 tomando um ar fresco",
+    "🎮 jogando por aí",
 ]
 
 _cycle_status = itertools.cycle(_STATUS_LIST)
@@ -1556,9 +1535,10 @@ _cycle_status = itertools.cycle(_STATUS_LIST)
 
 @tasks.loop(seconds=30)
 async def rotate_status():
-    name, activity_type = next(_cycle_status)
+    status_text = next(_cycle_status)
     await bot.change_presence(
-        activity=discord.Activity(type=activity_type, name=name)
+        activity=discord.CustomActivity(name=status_text),
+        status=discord.Status.online,
     )
 
 
