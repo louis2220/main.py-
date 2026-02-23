@@ -1106,6 +1106,71 @@ async def automod_status(interaction: discord.Interaction):
     embed.timestamp = discord.utils.utcnow()
     await interaction.followup.send(embed=embed, ephemeral=True)
 
+
+@bot.tree.command(name="automod-reset", description="Deleta as regras antigas do bot e recria tudo do zero (10 regras)")
+@app_commands.default_permissions(administrator=True)
+async def automod_reset(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    guild = interaction.guild
+
+    # Buscar regras existentes
+    try:
+        rules = await guild.fetch_automod_rules()
+    except discord.Forbidden:
+        return await interaction.followup.send(
+            embed=error_embed("Sem permissão", "Preciso da permissão **Gerenciar Servidor**."),
+            ephemeral=True,
+        )
+
+    # Deletar regras antigas do bot
+    bot_rules = [r for r in rules if r.name.startswith("[Bot]")]
+    deletadas = 0
+    for rule in bot_rules:
+        try:
+            await rule.delete(reason="AutoMod reset pelo bot")
+            deletadas += 1
+        except discord.HTTPException:
+            pass
+
+    # Aguardar um momento para o Discord processar as deleções
+    import asyncio
+    await asyncio.sleep(2)
+
+    # Recriar tudo com o código novo
+    criadas, erros = await create_automod_rules(guild)
+
+    embed = discord.Embed(
+        title=f"{E.VERIFY} AutoMod Resetado!",
+        description=(
+            f"{E.ARROW_RED} **{deletadas}** regra(s) antiga(s) deletada(s).\n"
+            f"{E.ARROW_GREEN} **{criadas}** regra(s) nova(s) criadas.\n"
+            + (f"{E.WARN_IC} **{erros}** falha(s) ao criar.\n" if erros else "")
+            + f"\n{E.STAR} **Regras recriadas:**\n"
+            f"{E.ARROW_BLUE} Palavras bloqueadas #1 ao #6\n"
+            f"{E.ARROW_BLUE} Anti-Mention Spam\n"
+            f"{E.ARROW_BLUE} Anti-Spam de Conteúdo\n"
+            f"{E.ARROW_BLUE} Conteúdo Explícito (Preset)\n"
+            f"{E.ARROW_BLUE} Perfil Inadequado\n"
+            f"\n{E.INFO_IC} Rode este comando nos seus outros servidores também!"
+        ),
+        color=Colors.MAIN,
+    )
+    embed.set_footer(text=f"Servidor: {guild.name}")
+    embed.timestamp = discord.utils.utcnow()
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+    await bot.log_action(
+        title=f"{E.SETTINGS} AutoMod Reset",
+        description=f"{interaction.user} resetou o AutoMod em **{guild.name}**.",
+        fields=[
+            ("Deletadas", str(deletadas), True),
+            ("Criadas", str(criadas), True),
+            ("Erros", str(erros), True),
+        ],
+    )
+    log.info(f"AutoMod reset: {deletadas} deletadas, {criadas} criadas em {guild.name} ({guild.id})")
+
 # ==================================================
 # =========== SISTEMA DE EMBEDS (COMANDOS) =========
 # ==================================================
