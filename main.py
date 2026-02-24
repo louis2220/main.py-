@@ -1228,16 +1228,16 @@ async def clearwarns(interaction: discord.Interaction, membro: discord.Member):
 # ==================================================
 
 _STATUS_LIST = [
-    "☕ bebendo suco de maracujá",
-    "📖 lendo romance",
-    "🌐 entretendo nos servidores",
-    "🌙 vivendo por aí",
-    "🍳 comendo cuscuz com ovo",
-    "✂️ indo arrumar o cabelo",
-    "🎵 ouvindo música no fone",
-    "💤 descansando entre comandos",
-    "🌿 tomando um ar fresco",
-    "🎮 jogando por aí",
+    "☕️ | bebendo um cafezinho",
+    "📖 | lendo romance",
+    "✨️ | entretendo nos servidores",
+    "🌙 | vivendo por aí",
+    "🍳 | comendo cuscuz com ovo",
+    "✂️ | indo arrumar o cabelo",
+    "🎵 | ouvindo música no fone",
+    "💤 | descansando na segunda",
+    "🌿 | tomando um ar fresco",
+    "🎮 | jogando Mine",
 ]
 
 _cycle_status = itertools.cycle(_STATUS_LIST)
