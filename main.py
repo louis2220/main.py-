@@ -402,21 +402,21 @@ class EmbedBuilderView(View):
 # ──────────────────────────────────────────────────
 
 TICKET_CATEGORIES = [
-    discord.SelectOption(label="Suporte Geral",    value="suporte",    description="Dúvidas gerais ou ajuda",           emoji="💬"),
-    discord.SelectOption(label="Denúncias",         value="denuncia",   description="Denunciar um membro ou situação",   emoji="🚨"),
-    discord.SelectOption(label="Compra de VIP",     value="vip",        description="Adquirir um cargo VIP",             emoji="👑"),
-    discord.SelectOption(label="Resgate de Prêmio", value="premio",     description="Resgatar um prêmio conquistado",    emoji="🎁"),
-    discord.SelectOption(label="Patrocínio",        value="patrocinio", description="Proposta de parceria ou patrocínio",emoji="🤝"),
-    discord.SelectOption(label="Outros",            value="outros",     description="Outros assuntos",                   emoji="📋"),
+    discord.SelectOption(label="Suporte Geral",    value="suporte",    description="Dúvidas gerais ou ajuda",           emoji="<:1000006244:1475982552488607815>"),
+    discord.SelectOption(label="Denúncias",         value="denuncia",   description="Denunciar um membro ou situação",   emoji="<:1000006242:1475982573846139001>"),
+    discord.SelectOption(label="Compra de VIP",     value="vip",        description="Adquirir um cargo VIP",             emoji="<:1000006239:1475982464928452678>"),
+    discord.SelectOption(label="Resgate de Prêmio", value="premio",     description="Resgatar um prêmio conquistado",    emoji="<:1000006240:1475982529243643967>"),
+    discord.SelectOption(label="Patrocínio",        value="patrocinio", description="Proposta de parceria ou patrocínio",emoji="<1000006247:1475982600463187990>"),
+    discord.SelectOption(label="Outros",            value="outros",     description="Outros assuntos",                   emoji="<1000006236:1475982635384836126>"),
 ]
 
 TICKET_EMOJI_MAP = {
-    "suporte":    "💬",
-    "denuncia":   "🚨",
-    "vip":        "👑",
-    "premio":     "🎁",
-    "patrocinio": "🤝",
-    "outros":     "📋",
+    "suporte":    "<:1000006244:1475982552488607815>",
+    "denuncia":   "<:1000006242:1475982573846139001>",
+    "vip":        "<:1000006239:1475982464928452678>",
+    "premio":     "<:1000006240:1475982529243643967>",
+    "patrocinio": "<1000006247:1475982600463187990>",
+    "outros":     "<1000006236:1475982635384836126>",
 }
 TICKET_LABEL_MAP = {
     "suporte":    "Suporte Geral",
@@ -946,12 +946,12 @@ async def ticket_painel(
             f"{E.ARROW} {descricao}\n"
             f"{E.SYMBOL}{E.LEAF}\n\n"
             f"{E.SPARKLE} **Categorias disponíveis:**\n"
-            f"{E.ARROW} 💬 Suporte Geral\n"
-            f"{E.ARROW} 🚨 Denúncias\n"
-            f"{E.ARROW} 👑 Compra de VIP\n"
-            f"{E.ARROW} 🎁 Resgate de Prêmio\n"
-            f"{E.ARROW} 🤝 Patrocínio\n"
-            f"{E.ARROW} 📋 Outros\n\n"
+            f"{E.ARROW} Suporte Geral\n"
+            f"{E.ARROW} Denúncias\n"
+            f"{E.ARROW} Compra de VIP\n"
+            f"{E.ARROW} Resgate de Prêmio\n"
+            f"{E.ARROW} Patrocínio\n"
+            f"{E.ARROW} Outros\n\n"
             f"{E.ORB_GREEN} Selecione abaixo e aguarde nossa equipe! {E.HEARTS_S}"
         ),
         color=Colors.MAIN,
@@ -1597,7 +1597,7 @@ async def clearwarns(interaction: discord.Interaction, membro: discord.Member):
 _STATUS_LIST = [
     "☕️ | bebendo um cafezinho",
     "📖 | lendo romance",
-    "✨️ | entretendo nos servidores",
+    "✨️ | me adicione!",
     "🌙 | vivendo por aí",
     "🍳 | comendo cuscuz com ovo",
     "✂️ | indo arrumar o cabelo",
