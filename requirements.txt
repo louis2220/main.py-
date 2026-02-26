@@ -1,3 +1,4 @@
 discord.py>=2.4.0
-PyNaCl
-aiohttp
+PyNaCl>=1.5.0
+yt-dlp>=2024.1.1
+aiohttp>=3.9.0
