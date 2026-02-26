@@ -1,5 +1,0 @@
-[phases.setup]
-nixPkgs = ["python311", "python311Packages.discordpy", "python311Packages.aiohttp", "ffmpeg"]
-
-[começar]
-cmd = "python3 main.py"
