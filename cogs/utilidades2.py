@@ -311,8 +311,14 @@ class Utilidades2(commands.Cog):
     @app_commands.describe(cidade="Nome da cidade (ex: São Paulo, BR)")
     async def clima(self, inter: discord.Interaction, cidade: str):
         await inter.response.defer()
-        api_key = "bd5e378503939ddaee76f12ad7a97608"  # chave pública de demonstração
-        url     = f"https://api.openweathermap.org/data/2.5/weather?q={cidade}&appid={api_key}&units=metric&lang=pt_br"
+        import os
+        api_key = os.getenv("OPENWEATHER_API_KEY", "")
+        if not api_key:
+            return await inter.followup.send(
+                embed=error_embed("Sem chave de API", "Configure a variável `OPENWEATHER_API_KEY` no Railway."),
+                ephemeral=True,
+            )
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={cidade}&appid={api_key}&units=metric&lang=pt_br"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as resp:
@@ -387,3 +393,4 @@ class Utilidades2(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Utilidades2(bot))
+            
