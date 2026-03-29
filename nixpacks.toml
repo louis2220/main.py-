@@ -2,7 +2,10 @@
 nixPkgs = ["ffmpeg"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = [
+    "pip install -r requirements.txt",
+    "pip install -U yt-dlp"
+]
 
 [start]
 cmd = "python main.py"
