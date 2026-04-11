@@ -15,7 +15,7 @@ from db.database import init_pool
 log = logging.getLogger("multibot.cores")
 
 # Cor padrão do bot (roxo)
-BOT_COLOR = 0x9B59B6
+BOT_COLOR = 0xff0000
 
 # ── Helpers de embed ──────────────────────────────────────────────────────────
 
