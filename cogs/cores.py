@@ -365,6 +365,7 @@ class Cores(commands.Cog):
         app_commands.Choice(name="Rosa",     value="rosa"),
         app_commands.Choice(name="Marrom",   value="marrom"),
         app_commands.Choice(name="Branco",   value="branco"),
+        app_commands.Choice(name="Roxo",     value="roxo"),
     ])
     @app_commands.default_permissions(administrator=True)
     async def cores_setup_normal(self, inter: discord.Interaction, cor: str, cargo: discord.Role):
